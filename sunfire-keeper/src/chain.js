@@ -57,6 +57,48 @@ export class Chain {
     return memos;
   }
 
+  /**
+   * Payouts that reached `pubkey` since `sinceSec`, oldest first: successful
+   * transactions that touched `vault` and left `pubkey` richer, whoever sent
+   * them, with the lamports each brought (the fee added back when `pubkey`
+   * paid it). The bot's own buybacks touch the vault too but leave it poorer.
+   */
+  async payoutsSince(pubkey, vault, sinceSec, { maxPages = 20 } = {}) {
+    this.payoutOf ??= new Map();
+    const payouts = [];
+    let before;
+    scan: for (let page = 0; page < maxPages; page++) {
+      const sigs = await this.conn.getSignaturesForAddress(pubkey, { limit: 1000, before });
+      for (const s of sigs) {
+        if (s.blockTime && s.blockTime < sinceSec) break scan;
+        if (s.err) continue;
+        if (!this.payoutOf.has(s.signature)) {
+          const lamports = await this.payoutIn(s.signature, pubkey, vault);
+          // Not indexed yet: look again next time instead of remembering nothing came in.
+          if (lamports === null) continue;
+          this.payoutOf.set(s.signature, lamports);
+        }
+        const lamports = this.payoutOf.get(s.signature);
+        if (lamports > 0n) payouts.push({ signature: s.signature, lamports });
+      }
+      if (sigs.length < 1000) break;
+      before = sigs[sigs.length - 1].signature;
+    }
+    return payouts.reverse();
+  }
+
+  async payoutIn(signature, pubkey, vault) {
+    const tx = await this.conn.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+    if (!tx?.meta) return null;
+    // Balances follow the account order: static keys, then lookup-table writable, then readonly.
+    const { writable = [], readonly = [] } = tx.meta.loadedAddresses ?? {};
+    const keys = [...tx.transaction.message.staticAccountKeys, ...writable, ...readonly].map(String);
+    const i = keys.indexOf(pubkey.toBase58());
+    if (i < 0 || !keys.includes(vault.toBase58())) return 0n;
+    const fee = i === 0 ? BigInt(tx.meta.fee) : 0n;
+    return BigInt(tx.meta.postBalances[i]) - BigInt(tx.meta.preBalances[i]) + fee;
+  }
+
   async readConfig() {
     const info = await this.conn.getAccountInfo(this.pdas.config);
     return info ? decodeConfig(info.data) : null;

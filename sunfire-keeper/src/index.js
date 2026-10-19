@@ -20,6 +20,9 @@ log(`SunFire keeper ${cfg.dryRun ? "in DRY RUN (simulates only)" : "LIVE"}`);
 log(cfg.mode === "program"
   ? `program ${cfg.programId.toBase58()}, keeper ${cfg.keeper.publicKey.toBase58()}, every ${cfg.pollMs / 1000}s`
   : `bot-only mode, token ${cfg.sfireMint.toBase58()}, bot wallet ${cfg.keeper.publicKey.toBase58()}, every ${cfg.pollMs / 1000}s`);
+if (cfg.mode === "wallet" && cfg.feeShareWallet) {
+  log(`fee share: ${cfg.feeShareBps / 100} % of every creator fee payout goes to ${cfg.feeShareWallet.toBase58()}`);
+}
 
 let stopping = false;
 let timer;

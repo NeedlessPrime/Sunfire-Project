@@ -8,8 +8,12 @@ export const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDL
 /** Lamports a system account must keep to stay rent-exempt. */
 const RENT_FLOOR = 890_880n;
 const KEY_RE = /key=([A-Za-z0-9-]+)/g;
+const SHARE_RE = /fee share for=([1-9A-HJ-NP-Za-km-z]+)/g;
 /** Most SOL a buyback may cost beyond its amount: fees and rent for the token account and pump.fun's volume accumulator. */
 const MAX_OVERHEAD = 10_000_000n;
+/** A fee share below this is not worth a transaction; it stays with the bot. */
+const MIN_SHARE = 100_000n;
+const TX_FEE_MARGIN = 10_000n;
 const SWAP_PROGRAMS = [ComputeBudgetProgram.programId, SystemProgram.programId, TOKEN_PROGRAM, ATA_PROGRAM, JUPITER_V6];
 
 const sol = (lamports) => (Number(lamports) / 1e9).toFixed(4);
@@ -20,18 +24,25 @@ const sol = (lamports) => (Number(lamports) / 1e9).toFixed(4);
  * random share of its own balance on $SFIRE through Jupiter and burns all of
  * it. Each buyback carries a public memo naming the NOAA event; the bot reads
  * its own memos back so an event is never bought twice, even after a restart.
+ * With FEE_SHARE_WALLET set, the bot is the only fee shareholder and
+ * forwards FEE_SHARE_PERCENT of every payout before buying anything.
  */
 export class Burner {
   constructor({ cfg, chain, readEvents, buildSwap, alert = async () => {}, log = console.log, now = () => Date.now() }) {
     Object.assign(this, { cfg, chain, readEvents, buildSwap, alert, log, now });
     this.signer = cfg.keeper.publicKey;
     this.handled = new Set();
+    this.shared = new Set();
     this.lastCrank = -Infinity;
   }
 
   async tick() {
-    await this.crankFees();
+    const cranked = await this.crankFees();
+    await this.shareFees();
     await this.burnHeld();
+    // A payout the bot just cranked may not be in its history yet: wait a
+    // tick so its share goes out before a buyback could spend it.
+    if (cranked && this.cfg.feeShareWallet) return;
     const events = await this.readEvents(Math.floor(this.now() / 1000));
     if (events.length === 0) return;
     const done = await this.burnedKeys();
@@ -142,8 +153,11 @@ export class Burner {
     const data = await this.chain.accountData(a.sharingConfig);
     if (!data) return this.warnOnce("No pump.fun fee sharing for this token yet, nothing to distribute");
     const { shareholders } = decodeSharingConfig(data);
-    if (!shareholders.some((s) => s.address.equals(this.signer))) {
+    const mine = shareholders.find((s) => s.address.equals(this.signer));
+    if (!mine) {
       this.warnOnce(`This bot (${this.signer.toBase58()}) is not a fee shareholder of the token`);
+    } else if (this.cfg.feeShareWallet && mine.shareBps < 10_000) {
+      this.warnOnce(`FEE_SHARE_WALLET is set but the bot only gets ${mine.shareBps / 100} % of the creator fees: make it the only shareholder (100 %), or the fee share is taken twice`);
     }
 
     const ixs = [];
@@ -151,7 +165,56 @@ export class Burner {
     const curveFees = (await this.chain.lamports(a.creatorVault)) - RENT_FLOOR;
     if (ixs.length === 0 && curveFees < this.cfg.crankMinLamports) return;
     ixs.push(distributeIx(mint, shareholders));
-    await this.chain.send(`distribute creator fees (${shareholders.map((s) => `${s.shareBps / 100} %`).join(" / ")})`, ixs);
+    return this.chain.send(`distribute creator fees (${shareholders.map((s) => `${s.shareBps / 100} %`).join(" / ")})`, ixs);
+  }
+
+  /**
+   * Forwards FEE_SHARE_PERCENT of every creator fee payout to
+   * FEE_SHARE_WALLET, whoever cranked the payout. Each transfer names its
+   * payout in a memo the bot reads back, so none is paid twice, even after a
+   * restart. Until a share is paid the tick stops here, so no buyback spends it.
+   */
+  async shareFees() {
+    const to = this.cfg.feeShareWallet;
+    if (!to) return;
+    const since = Math.floor(this.now() / 1000) - this.cfg.feeShareLookbackSec;
+    const payouts = await this.chain.payoutsSince(this.signer, feeAccounts(this.cfg.sfireMint).creatorVault, since);
+    const pending = payouts.filter((p) => !this.shared.has(p.signature));
+    if (pending.length === 0) return;
+    const paid = new Set();
+    for (const memo of await this.chain.signedMemosSince(this.signer, since)) {
+      for (const m of memo.matchAll(SHARE_RE)) paid.add(m[1]);
+    }
+
+    const pct = this.cfg.feeShareBps / 100;
+    for (const { signature, lamports } of pending) {
+      if (paid.has(signature)) {
+        this.shared.add(signature);
+        continue;
+      }
+      const share = (lamports * BigInt(this.cfg.feeShareBps)) / 10_000n;
+      if (share < MIN_SHARE) {
+        this.shared.add(signature);
+        this.log(`fee payout of ${sol(lamports)} SOL: its ${pct} % share is below ${sol(MIN_SHARE)} SOL, kept for buybacks`);
+        continue;
+      }
+      const balance = await this.chain.lamports(this.signer);
+      if (balance < share + RENT_FLOOR + TX_FEE_MARGIN) {
+        const text = `Fee share of ${sol(share)} SOL owed for payout ${signature}, but the bot holds ${sol(balance)} SOL. Buybacks are paused until it is paid.`;
+        this.alerted ??= new Set();
+        if (!this.alerted.has(signature)) {
+          this.alerted.add(signature);
+          await this.alert(text);
+        }
+        throw new Error(text);
+      }
+      const memo = `SunFire fee share for=${signature} sol=${sol(share)}`;
+      await this.chain.send(`send ${sol(share)} SOL fee share (${pct} % of ${sol(lamports)}) to ${to.toBase58()}`, [
+        SystemProgram.transfer({ fromPubkey: this.signer, toPubkey: to, lamports: share }),
+        memoIx(this.signer, memo),
+      ]);
+      this.shared.add(signature);
+    }
   }
 
   warnOnce(text) {

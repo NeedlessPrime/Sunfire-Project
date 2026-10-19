@@ -9,14 +9,19 @@ export function loadConfig(env = process.env) {
   const mode = env.PROGRAM_ID ? "program" : "wallet";
   if (mode === "wallet" && !env.SFIRE_MINT) throw new Error("Set SFIRE_MINT (bot-only mode) or PROGRAM_ID");
   if (!env.KEEPER_SECRET_KEY && !dryRun) throw new Error("KEEPER_SECRET_KEY is required when DRY_RUN=false");
+  // A dry run only simulates, so a throwaway key is enough to try the bot.
+  const keeper = env.KEEPER_SECRET_KEY ? parseSecretKey(env.KEEPER_SECRET_KEY) : Keypair.generate();
+  const feeShareWallet = env.FEE_SHARE_WALLET ? parseAddress(env.FEE_SHARE_WALLET, "FEE_SHARE_WALLET") : null;
+  if (feeShareWallet?.equals(keeper.publicKey)) throw new Error("FEE_SHARE_WALLET must be another wallet than the bot's");
+  const feeSharePct = num(env.FEE_SHARE_PERCENT, 50);
+  if (feeSharePct > 100) throw new Error(`FEE_SHARE_PERCENT must be between 0 and 100, got ${feeSharePct}`);
 
   return {
     rpcUrl: env.RPC_URL || "https://api.mainnet-beta.solana.com",
     mode,
     programId: env.PROGRAM_ID ? new PublicKey(env.PROGRAM_ID) : null,
     sfireMint: env.SFIRE_MINT ? new PublicKey(env.SFIRE_MINT) : null,
-    // A dry run only simulates, so a throwaway key is enough to try the bot.
-    keeper: env.KEEPER_SECRET_KEY ? parseSecretKey(env.KEEPER_SECRET_KEY) : Keypair.generate(),
+    keeper,
     dryRun,
     pollMs: num(env.POLL_SECONDS, 60) * 1000,
     slippageBps: num(env.SLIPPAGE_BPS, 300),
@@ -37,7 +42,20 @@ export function loadConfig(env = process.env) {
     feeCrankMs: num(env.FEE_CRANK_MINUTES, 30) * 60_000,
     crankMinLamports: lamports(num(env.CRANK_MIN_SOL, 0.01)),
     maxPriceImpactPct: num(env.MAX_PRICE_IMPACT_PCT, 5),
+    // Optional: all creator fees reach the bot, which forwards this share of
+    // every payout to FEE_SHARE_WALLET.
+    feeShareWallet,
+    feeShareBps: Math.round(feeSharePct * 100),
+    feeShareLookbackSec: num(env.FEE_SHARE_LOOKBACK_HOURS, 72) * 3600,
   };
+}
+
+function parseAddress(value, name) {
+  try {
+    return new PublicKey(value.trim());
+  } catch {
+    throw new Error(`${name} is not a valid Solana address`);
+  }
 }
 
 /** Accepts a base58 secret key or the JSON byte array written by solana-keygen. */

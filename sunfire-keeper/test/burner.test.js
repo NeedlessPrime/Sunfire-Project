@@ -12,8 +12,9 @@ const X_FLARE = { key: "X-20261019T1400", tier: "X", label: "X1.0 flare", observ
 
 class FakeChain {
   constructor(signer) {
-    Object.assign(this, { signer, balance: 1n * SOL, memos: [], sent: [], tokens: new Map(), data: new Map(), lamportsOf: new Map() });
+    Object.assign(this, { signer, balance: 1n * SOL, memos: [], sent: [], payouts: [], tokens: new Map(), data: new Map(), lamportsOf: new Map() });
   }
+  async payoutsSince() { return this.payouts; }
   async lamports(pk) { return pk.equals(this.signer) ? this.balance : (this.lamportsOf.get(pk.toBase58()) ?? 0n); }
   async ownerOf() { return TOKEN_PROGRAM; }
   async accountData(pk) { return pk.equals(MINT) ? Buffer.alloc(82, 6) : (this.data.get(pk.toBase58()) ?? null); }
@@ -112,10 +113,7 @@ test("bought tokens are burned with BurnChecked and a burn memo", async () => {
 test("fee crank distributes once the creator vault holds enough, and moves PumpSwap fees first", async () => {
   const { b, chain, keeper } = make({ events: [], over: { feeCrankMs: 60_000 } });
   const a = feeAccounts(MINT);
-  const sc = Buffer.alloc(80 + 2 * 34);
-  [keeper.publicKey, Keypair.generate().publicKey].forEach((h, i) => { h.toBuffer().copy(sc, 80 + i * 34); sc.writeUInt16LE(5000, 112 + i * 34); });
-  sc.writeUInt32LE(2, 76);
-  chain.data.set(a.sharingConfig.toBase58(), sc);
+  shareholders(chain, [[keeper.publicKey, 5000], [Keypair.generate().publicKey, 5000]]);
 
   chain.lamportsOf.set(a.creatorVault.toBase58(), 890_880n + 1_000n);
   await b.tick();
@@ -126,6 +124,93 @@ test("fee crank distributes once the creator vault holds enough, and moves PumpS
   await b.tick();
   const programs = chain.sent[0].ixs.map((ix) => ix.programId.toBase58());
   assert.deepEqual(programs, [PUMP_AMM.toBase58(), PUMP.toBase58()]);
+});
+
+/** Writes the token's pump.fun SharingConfig with these [address, bps] holders. */
+function shareholders(chain, holders) {
+  const sc = Buffer.alloc(80 + holders.length * 34);
+  holders.forEach(([h, bps], i) => { h.toBuffer().copy(sc, 80 + i * 34); sc.writeUInt16LE(bps, 112 + i * 34); });
+  sc.writeUInt32LE(holders.length, 76);
+  chain.data.set(feeAccounts(MINT).sharingConfig.toBase58(), sc);
+}
+
+// ---- fee share: the bot gets all creator fees and forwards a share ----
+
+const TEAM = Keypair.generate().publicKey;
+const PAYOUT = "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW";
+const share = (over = {}) => ({ feeShareWallet: TEAM, feeShareBps: 5000, feeShareLookbackSec: 72 * 3600, ...over });
+
+test("forwards the share of every fee payout, whoever cranked it, with a memo naming the payout", async () => {
+  const { b, chain, keeper } = make({ events: [], over: share() });
+  chain.payouts = [{ signature: PAYOUT, lamports: SOL / 10n }];
+  await b.tick();
+  assert.equal(chain.sent.length, 1);
+  const [transfer] = chain.sent[0].ixs;
+  assert.ok(transfer.programId.equals(SystemProgram.programId));
+  assert.ok(transfer.keys[0].pubkey.equals(keeper.publicKey) && transfer.keys[1].pubkey.equals(TEAM));
+  assert.equal(transfer.data.readBigUInt64LE(4), SOL / 20n, "50 % of 0.1 SOL");
+  assert.equal(chain.memos[0], `SunFire fee share for=${PAYOUT} sol=0.0500`);
+
+  await b.tick();
+  assert.equal(chain.sent.length, 1, "paid once");
+});
+
+test("a payout already shared in the wallet's memos is never paid again, even after a restart", async () => {
+  const { b, chain } = make({ events: [], over: share() });
+  chain.payouts = [{ signature: PAYOUT, lamports: SOL / 10n }];
+  chain.memos.push(`[120] SunFire fee share for=${PAYOUT} sol=0.0500`);
+  await b.tick();
+  assert.equal(chain.sent.length, 0);
+});
+
+test("the share goes out before a buyback, which then only sees the bot's part", async () => {
+  const { b, chain, swaps } = make({ over: share() });
+  chain.payouts = [{ signature: PAYOUT, lamports: SOL / 2n }];
+  chain.onSend = (label, ixs) => { if (label.includes("fee share")) chain.balance -= ixs[0].data.readBigUInt64LE(4); };
+  await b.tick();
+  assert.match(chain.sent[0].label, /fee share/);
+  assert.match(chain.sent[1].label, /buy/);
+  const spendable = SOL - SOL / 4n - SOL / 50n;
+  assert.ok(swaps[0].amount <= spendable / 20n, "M flare: at most 5 % of what is left");
+});
+
+test("no buyback in the tick that cranked a payout, so its share is paid first", async () => {
+  const { b, chain, keeper, swaps } = make({ over: share({ feeCrankMs: 60_000 }) });
+  shareholders(chain, [[keeper.publicKey, 10_000]]);
+  chain.lamportsOf.set(feeAccounts(MINT).creatorVault.toBase58(), SOL);
+  await b.tick();
+  assert.match(chain.sent[0].label, /distribute creator fees \(100 %\)/);
+  assert.equal(swaps.length, 0, "waits a tick");
+  await b.tick();
+  assert.equal(swaps.length, 1);
+});
+
+test("a share the bot cannot pay pauses buybacks and alerts once", async () => {
+  const { b, chain, swaps } = make({ over: share() });
+  const alerts = [];
+  b.alert = async (t) => alerts.push(t);
+  chain.payouts = [{ signature: PAYOUT, lamports: 4n * SOL }];
+  await assert.rejects(() => b.tick(), /Buybacks are paused/);
+  await assert.rejects(() => b.tick(), /Buybacks are paused/);
+  assert.equal(swaps.length, 0);
+  assert.equal(chain.sent.length, 0);
+  assert.equal(alerts.length, 1);
+});
+
+test("warns when the fee share is on but pump.fun still splits the fees", async () => {
+  const { b, chain, keeper } = make({ events: [], over: share({ feeCrankMs: 60_000 }) });
+  const logs = [];
+  b.log = (t) => logs.push(t);
+  shareholders(chain, [[keeper.publicKey, 5000], [TEAM, 5000]]);
+  await b.tick();
+  assert.ok(logs.some((l) => /only gets 50 %.*taken twice/.test(l)), logs.join("\n"));
+});
+
+test("a dust share stays with the bot", async () => {
+  const { b, chain } = make({ events: [], over: share() });
+  chain.payouts = [{ signature: PAYOUT, lamports: 50_000n }];
+  await b.tick();
+  assert.equal(chain.sent.length, 0);
 });
 
 // ---- what the bot refuses to sign ----
