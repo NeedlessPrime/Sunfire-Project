@@ -539,7 +539,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
             <button class="play" id="play" aria-label="Pause"><svg viewBox="0 0 16 16" id="play-ico"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg></button>
             <button class="btn" id="fwd" aria-label="Step forward">›</button>
             <span class="sep" aria-hidden="true"></span>
-            <button class="btn" id="live-btn" aria-pressed="true">Live 4K</button>
+            <button class="btn" id="live-btn" aria-pressed="false">Live 4K</button>
           </div>
         </div>
 
@@ -841,7 +841,7 @@ const CHANNELS = [
   { id: "HMIIC", name: "HMI Visible", c: "#f0e6d0", temp: "5,800 K", desc: "Visible light. Sunspots as seen by eye." },
 ];
 let chan = CHANNELS[0];
-let rate = 1, stillMode = true; // open on the latest real-time image; the replay is opt-in
+let rate = 1, stillMode = false; // open on the NASA replay; "Live 4K" shows the latest still image
 let viewerStarted = false; // the 4K image is heavy, so it loads when the viewer comes near the screen
 const vid = $("vid"), still = $("still"), disk = $("disk");
 
@@ -991,7 +991,7 @@ async function loadKp() {
 function refresh() { loadXray(); loadFlares(); loadKp(); }
 renderChans();
 setChan("0171");
-setFrameTime(1);
+setFrameTime(0);
 syncPlay();
 refresh();
 setInterval(refresh, 60e3);
