@@ -4,7 +4,7 @@ import { PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY, TransactionInstruc
 export const JUPITER_V6 = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 export const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
 export const TOKEN_PROGRAM = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-export const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b8VTt3jajUSedEn3AfGBMh8tVwUJ");
+export const ATA_PROGRAM = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
 
 /** Lamports the program keeps in each vault (VAULT_FLOOR in lib.rs). */
 export const VAULT_FLOOR = 1_000_000n;
@@ -80,6 +80,38 @@ export function createAtaIdempotent(payer, owner, mint, tokenProgram = TOKEN_PRO
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: tokenProgram, isSigner: false, isWritable: false },
     ],
+  });
+}
+
+/** The pump.fun bonding curve and PumpSwap, the two places a pump.fun token trades. */
+export const PUMP_PROGRAMS = [
+  new PublicKey("6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"),
+  new PublicKey("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"),
+];
+
+/**
+ * Both pump.fun programs create a volume accumulator for each buyer on its
+ * first buy and charge the rent to the buyer. For the burn vault that rent
+ * would count against the armed budget, so the keeper creates them itself.
+ * Returns each account with the instruction that creates it.
+ */
+export function pumpVolumeAccumulators(payer, user) {
+  return PUMP_PROGRAMS.map((program) => {
+    const address = PublicKey.findProgramAddressSync([Buffer.from("user_volume_accumulator"), user.toBuffer()], program)[0];
+    const eventAuthority = PublicKey.findProgramAddressSync([Buffer.from("__event_authority")], program)[0];
+    const ix = new TransactionInstruction({
+      programId: program,
+      data: discriminator("global", "init_user_volume_accumulator"),
+      keys: [
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: user, isSigner: false, isWritable: false },
+        { pubkey: address, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: eventAuthority, isSigner: false, isWritable: false },
+        { pubkey: program, isSigner: false, isWritable: false },
+      ],
+    });
+    return { address, ix };
   });
 }
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { ata, buildIx, CONFIG_FIELDS, decodeConfig, discriminator, knownAccounts, pdas, TOKEN_PROGRAM } from "../src/program.js";
+import { ata, buildIx, CONFIG_FIELDS, decodeConfig, discriminator, knownAccounts, pdas, pumpVolumeAccumulators, TOKEN_PROGRAM } from "../src/program.js";
 
 const programId = new PublicKey("5mSUozcjURKYk6f3jmd8yuibZfxcyDg8i7TzdFNPk8ae");
 
@@ -74,4 +74,19 @@ test("ATA derivation matches the known wSOL ATA scheme", () => {
   const a = ata(owner, mint);
   assert.ok(PublicKey.isOnCurve(owner.toBuffer()));
   assert.ok(!PublicKey.isOnCurve(a.toBuffer()), "ATAs are off-curve PDAs");
+  // Same address @solana/spl-token's getAssociatedTokenAddressSync returns.
+  assert.equal(a.toBase58(), "FXzMi1gmhES7KR2muXwwmQWYadR52JgfK4vNzavWkTLK");
+});
+
+test("pump.fun volume accumulator init matches the pump.fun IDL", () => {
+  const payer = new PublicKey("DwZC3fK7z9XNHnatcwVGqWig2SozcS1FBQxhkLZAmLsV");
+  const vault = new PublicKey("FGpLMp4v6jiYbemuq4wbbisDzksi9YQoTNeLMVS4XLFx");
+  const [curve, amm] = pumpVolumeAccumulators(payer, vault);
+  // Discriminator of init_user_volume_accumulator in both pump.fun IDLs.
+  assert.deepEqual([...curve.ix.data], [94, 6, 202, 115, 255, 96, 232, 183]);
+  assert.deepEqual([...amm.ix.data], [94, 6, 202, 115, 255, 96, 232, 183]);
+  // Addresses the programs created for this vault on a mainnet fork.
+  assert.equal(curve.address.toBase58(), "DTWnZUgc98sRVKRu8RCihcP2X1KW5SwAdZ3x97sPxt9t");
+  assert.equal(amm.address.toBase58(), "BRXCzEQK98t42kXJvrGH5ZExNBPjUA27yoiSs2vigxho");
+  assert.ok(curve.ix.keys[0].isSigner && !curve.ix.keys[1].isSigner, "keeper pays, vault does not sign");
 });

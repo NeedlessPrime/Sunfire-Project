@@ -1,5 +1,5 @@
 import { decide, TIER_NAME } from "./events.js";
-import { ata, buildIx, createAtaIdempotent, knownAccounts, TOKEN_PROGRAM, VAULT_FLOOR, WSOL_MINT } from "./program.js";
+import { ata, buildIx, createAtaIdempotent, knownAccounts, pumpVolumeAccumulators, TOKEN_PROGRAM, VAULT_FLOOR, WSOL_MINT } from "./program.js";
 
 const EXECUTE_COMPUTE_UNITS = 1_000_000;
 const NOAA_ALERT_AFTER_MS = 15 * 60_000;
@@ -138,6 +138,10 @@ export class Keeper {
       { jupiter_data: swap.data, min_out: swap.minOut },
       swap.remaining,
     );
+    const accumulators = [];
+    for (const { address, ix: init } of pumpVolumeAccumulators(this.signer, a.burn_vault)) {
+      if (!(await this.chain.exists(address))) accumulators.push(init);
+    }
     const label = `execute ${TIER_NAME[state.pendingTier] ?? "?"} burn: ${sol(amount)} SOL for at least ${swap.minOut} $SFIRE`;
     await this.chain.send(
       label,
@@ -145,6 +149,7 @@ export class Keeper {
         ...swap.computeBudget,
         createAtaIdempotent(this.signer, a.burn_vault, WSOL_MINT, TOKEN_PROGRAM),
         createAtaIdempotent(this.signer, a.burn_vault, state.sfireMint, sfireTokenProgram),
+        ...accumulators,
         ...swap.setup,
         ix,
       ],

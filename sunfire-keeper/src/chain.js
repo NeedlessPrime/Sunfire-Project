@@ -21,6 +21,10 @@ export class Chain {
     return this.conn.getBalance(pubkey).then(BigInt);
   }
 
+  async exists(pubkey) {
+    return (await this.conn.getAccountInfo(pubkey)) !== null;
+  }
+
   async ownerOf(pubkey) {
     const info = await this.conn.getAccountInfo(pubkey);
     if (!info) throw new Error(`Account ${pubkey.toBase58()} not found`);

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Keypair } from "@solana/web3.js";
 import { Keeper } from "../src/keeper.js";
-import { discriminator, JUPITER_V6, TOKEN_PROGRAM, VAULT_FLOOR } from "../src/program.js";
+import { discriminator, JUPITER_V6, PUMP_PROGRAMS, pumpVolumeAccumulators, TOKEN_PROGRAM, VAULT_FLOOR } from "../src/program.js";
 
 const programId = Keypair.generate().publicKey;
 const keeperKey = Keypair.generate();
@@ -26,6 +26,7 @@ class FakeChain {
   async readConfig() { return this.state && { ...this.state }; }
   async lamports(pk) { return pk.toBase58() === this.feeVaultKey ? this.feeVault : this.burnVault; }
   async ownerOf() { return TOKEN_PROGRAM; }
+  async exists(pk) { return !(this.missing ?? []).includes(pk.toBase58()); }
   async send(label, ixs) {
     const names = ixs.map((ix) => ix.programId.equals(programId) ? NAMES.get(ix.data.subarray(0, 8).toString("hex")) : "other");
     this.sent.push({ label, names, ixs });
@@ -156,4 +157,17 @@ test("program not initialized: nothing happens", async () => {
   const { k, chain } = makeKeeper({ state: null });
   await k.tick();
   assert.deepEqual(chain.sent, []);
+});
+
+test("first burn: creates the vault's missing pump.fun volume accumulators before the swap", async () => {
+  const { k, chain } = makeKeeper({ state: { ...baseState(), pendingBudget: 300_000_000n, pendingTier: 0 } });
+  const [curve, amm] = pumpVolumeAccumulators(k.signer, k.accounts(chain.state).burn_vault);
+  chain.missing = [curve.address.toBase58()];
+  await k.tick();
+  const ixs = chain.sent.find((s) => s.names.includes("execute")).ixs;
+  const pumpIxs = ixs.filter((ix) => PUMP_PROGRAMS.some((p) => ix.programId.equals(p)));
+  assert.equal(pumpIxs.length, 1, "only the missing accumulator is created");
+  assert.ok(pumpIxs[0].keys[2].pubkey.equals(curve.address));
+  assert.ok(!ixs.some((ix) => ix.keys.some((key) => key.pubkey.equals(amm.address))), "the existing one is left alone");
+  assert.ok(ixs.indexOf(pumpIxs[0]) < ixs.findIndex((ix) => ix.programId.equals(k.cfg.programId)), "created before execute");
 });
