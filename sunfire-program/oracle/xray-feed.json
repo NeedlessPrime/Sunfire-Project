@@ -1,0 +1,11 @@
+{
+  "name": "GOES X-ray flux 0.1-0.8nm (max over 6 h, W/m2)",
+  "jobs": [
+    {
+      "tasks": [
+        { "httpTask": { "url": "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json" } },
+        { "jsonParseTask": { "path": "$[?(@.energy == '0.1-0.8nm')].flux", "aggregationMethod": "MAX" } }
+      ]
+    }
+  ]
+}

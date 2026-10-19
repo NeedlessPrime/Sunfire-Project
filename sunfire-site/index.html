@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SunFire</title>
+<meta name="description" content="SunFire ($SFIRE): the Solana token whose supply is controlled by real solar activity. Live NASA SDO imagery and NOAA GOES data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-screen observatory viewer (Sun centred, channel panel left, controls bottom), then a sober protocol document below. */
+:root {
+  --space: #000000;
+  --panel: #0b0a0c;
+  --raise: #141215;
+  --line: #232024;
+  --text: #ece6df;
+  --muted: #8f8780;
+  --sun: #ff8a1f;
+  --gold: #f5b83d;
+  --flare: #ff4157;
+  --calm: #5fd39a;
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--space); color: var(--text);
+  font: 400 15px/1.6 var(--font-body);
+  -webkit-font-smoothing: antialiased; overflow-x: clip;
+}
+a { color: var(--gold); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); }
+.gutter {
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+
+/* ---------------- Top bar ---------------- */
+.top {
+  position: fixed; inset: 0 0 auto; z-index: 30;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding-top: calc(14px + env(safe-area-inset-top, 0px)); padding-bottom: 14px;
+  background: linear-gradient(#000c, #0000);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 600; font-size: 17px; letter-spacing: .01em; color: var(--text); }
+.brand:hover { text-decoration: none; }
+.brand i { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 38% 35%, #ffe08a, var(--sun) 55%, #8a2600); box-shadow: 0 0 18px #ff8a1f99; }
+.brand b { color: var(--sun); font-weight: 600; }
+.nav { display: flex; align-items: center; gap: 4px; }
+.nav a { color: var(--muted); font-size: 13px; padding: 7px 12px; border-radius: 8px; }
+.nav a:hover { color: var(--text); text-decoration: none; background: var(--raise); }
+.nav a.on { color: var(--sun); background: #ff8a1f14; }
+.status {
+  font: 500 11px/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--calm); background: #000a; white-space: nowrap;
+}
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
+.status.watch { color: var(--gold); }
+.status.alert { color: var(--flare); border-color: var(--flare); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px #ff415722; } }
+
+/* ---------------- Viewer ---------------- */
+.viewer { position: relative; height: 100svh; min-height: 620px; overflow: hidden; background: #000; }
+.stage { position: absolute; inset: 0; display: grid; place-items: center; }
+.disk {
+  position: relative; width: min(82vh, 88vw); aspect-ratio: 1; max-width: 100%;
+}
+.disk video, .disk img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  transition: opacity .5s ease;
+}
+.disk img { opacity: 0; }
+.disk.still img { opacity: 1; }
+.disk.still video { opacity: 0; }
+
+.side {
+  position: absolute; z-index: 10; left: 0; top: calc(72px + env(safe-area-inset-top, 0px));
+  width: min(340px, 100%); display: grid; gap: 14px;
+}
+.chans { display: flex; flex-wrap: wrap; gap: 6px; }
+.chan {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  font: 500 12px/1 var(--font-mono); color: var(--muted);
+  background: #0009; border: 1px solid transparent; padding: 7px 9px; border-radius: 7px;
+}
+.chan::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+.chan:hover { color: var(--text); }
+.chan[aria-pressed="true"] { color: var(--text); border-color: var(--line); background: var(--raise); }
+.info { border-top: 1px solid var(--line); padding-top: 14px; display: grid; gap: 4px; }
+.info .row1 { display: flex; align-items: center; gap: 10px; font: 500 13px/1 var(--font-mono); }
+.info .row1::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--c, var(--gold)); box-shadow: 0 0 10px var(--c, var(--gold)); }
+.info .temp { color: var(--gold); }
+.info p { margin: 0; color: var(--muted); font-size: 13px; }
+.clock { border-top: 1px solid var(--line); padding-top: 12px; font: 400 12px/1 var(--font-mono); color: var(--gold); }
+.clock span { color: var(--muted); }
+
+.hud {
+  position: absolute; z-index: 10; right: 0; top: calc(72px + env(safe-area-inset-top, 0px));
+  display: grid; gap: 6px; justify-items: end; text-align: right;
+}
+.hud-item { background: #000a; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; min-width: 150px; }
+.hud-item small { display: block; font: 500 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.hud-item strong { display: block; font: 600 20px/1.2 var(--font-display); margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+.controls {
+  position: absolute; z-index: 10; left: 50%; transform: translateX(-50%);
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  width: min(820px, calc(100% - 40px)); display: grid; gap: 10px;
+}
+.track { position: relative; height: 18px; cursor: pointer; }
+.track::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line); border-radius: 2px; }
+.track .done { position: absolute; left: 0; top: 8px; height: 2px; background: var(--calm); border-radius: 2px; }
+.track .knob { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px #fff8; }
+.tl-labels { display: flex; justify-content: space-between; align-items: baseline; font: 400 11px/1 var(--font-mono); color: var(--muted); }
+.tl-labels .now { font-size: 15px; color: var(--text); letter-spacing: .04em; }
+.tl-labels .now span { font-size: 10px; color: var(--muted); }
+.btns { display: flex; justify-content: center; align-items: center; gap: 6px; flex-wrap: wrap; }
+.btn {
+  background: none; border: 0; cursor: pointer; color: var(--muted);
+  font: 500 12px/1 var(--font-mono); padding: 7px 9px; border-radius: 6px;
+}
+.btn:hover { color: var(--text); }
+.btn[aria-pressed="true"] { color: var(--text); background: var(--raise); }
+.play {
+  width: 40px; height: 40px; border-radius: 50%; background: var(--sun); color: #000;
+  display: grid; place-items: center; border: 0; cursor: pointer; margin: 0 8px;
+}
+.play svg { width: 16px; height: 16px; fill: currentColor; }
+.sep { width: 1px; height: 18px; background: var(--line); margin: 0 6px; }
+
+.credit { position: absolute; z-index: 10; left: 0; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); font: 400 10px/1.4 var(--font-mono); color: #5e5852; max-width: 220px; }
+.scroll-cue { position: absolute; z-index: 10; right: 0; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); font: 400 11px/1 var(--font-mono); color: var(--muted); }
+
+/* ---------------- Document ---------------- */
+.doc { background: var(--panel); border-top: 1px solid var(--line); }
+.doc-inner { max-width: 1120px; margin: 0 auto; padding-block: 96px 40px; }
+section.block { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 48px; padding-block: 56px; border-top: 1px solid var(--line); }
+section.block:first-of-type { border-top: 0; padding-top: 0; }
+.kicker { font: 500 11px/1 var(--font-mono); letter-spacing: .16em; text-transform: uppercase; color: var(--sun); }
+h1, h2 { font-family: var(--font-display); font-weight: 600; letter-spacing: -.01em; text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(22px, 2.4vw, 28px); line-height: 1.2; margin-top: 14px; }
+.lead { font-size: 19px; color: var(--text); max-width: 62ch; margin: 0; }
+
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 36px; }
+.facts div { background: var(--raise); padding: 18px; min-width: 0; }
+.facts small { display: block; font: 500 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.facts strong { display: block; margin-top: 8px; font: 500 15px/1.3 var(--font-mono); }
+
+ol.flow { margin: 0; padding: 0; counter-reset: s; }
+.flow li { list-style: none; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.flow li:first-child { padding-top: 0; }
+.flow li:last-child { border-bottom: 0; }
+.flow li::before { counter-increment: s; content: "0" counter(s); font: 500 13px/1.6 var(--font-mono); color: var(--sun); }
+.flow b { display: block; font-weight: 600; margin-bottom: 2px; }
+.flow span { color: #c9c1b9; }
+
+.tiers { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.tiers th { text-align: left; font: 500 10px/1 var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 0 14px 12px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tiers td { padding: 16px 14px 16px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tiers td:first-child { white-space: nowrap; }
+.tiers .pct { font: 500 15px/1.3 var(--font-mono); color: var(--text); white-space: nowrap; }
+.note { color: var(--muted); font-size: 14px; }
+.tag { display: inline-block; font: 600 12px/1 var(--font-mono); padding: 6px 9px; border-radius: 6px; min-width: 64px; text-align: center; }
+.tag.m { background: var(--sun); color: #000; }
+.tag.x { background: var(--flare); color: #fff; }
+.tag.g { background: linear-gradient(90deg, #36d39a, #7a5cff); color: #000; }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.stack { display: grid; gap: 16px; align-content: start; }
+.card { background: var(--raise); border: 1px solid var(--line); border-radius: 12px; padding: 20px; min-width: 0; }
+.card h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+.card p { margin: 0; color: #c9c1b9; font-size: 14px; }
+
+.dash { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; }
+.dash .card h3 { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.dash .card h3 span { font: 400 11px/1.6 var(--font-mono); color: var(--muted); }
+#xray { width: 100%; height: 260px; display: block; margin-top: 10px; }
+.gauge { display: grid; gap: 12px; margin-top: 14px; }
+.g-row { display: grid; grid-template-columns: 64px minmax(0, 1fr) 44px; gap: 10px; align-items: center; font: 400 12px/1 var(--font-mono); }
+.g-track { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.g-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--gold), var(--sun)); transition: width 1s ease; }
+.g-row.x .g-fill { background: linear-gradient(90deg, var(--sun), var(--flare)); }
+.g-row span:last-child { text-align: right; }
+.kp-bars { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; align-items: end; height: 90px; margin-top: 14px; }
+.kp-bars div { border-radius: 3px 3px 0 0; background: var(--calm); min-height: 3px; }
+.kp-bars div.g { background: var(--gold); }
+.kp-bars div.s { background: var(--flare); }
+.kp-axis { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; margin-top: 6px; font: 400 10px/1 var(--font-mono); color: var(--muted); text-align: center; }
+.span2 { grid-column: 1 / -1; }
+.table-wrap { overflow-x: auto; margin-top: 10px; }
+.log { width: 100%; border-collapse: collapse; font: 400 13px/1 var(--font-mono); font-variant-numeric: tabular-nums; }
+.log th { text-align: left; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); font-weight: 500; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.log td { padding: 11px 12px 11px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.cls { display: inline-block; min-width: 58px; text-align: center; padding: 4px 6px; border-radius: 5px; background: var(--line); color: var(--muted); }
+.cls.C { color: var(--gold); }
+.cls.M { background: var(--sun); color: #000; }
+.cls.X { background: var(--flare); color: #fff; }
+.trig { color: var(--sun); }
+.empty, .err { color: var(--muted); padding: 14px 0; }
+.err { color: var(--flare); }
+
+.limits { padding-left: 18px; margin: 0; }
+.limits li { margin-bottom: 10px; color: #c9c1b9; max-width: 64ch; }
+
+footer { border-top: 1px solid var(--line); }
+footer .doc-inner { padding-block: 28px 44px; display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; color: var(--muted); font-size: 12px; }
+footer p { margin: 0; max-width: 70ch; }
+
+/* ---------------- Responsive ---------------- */
+@media (max-width: 1000px) {
+  .hud { display: none; }
+  section.block { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .dash { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .nav a:not(.on) { display: none; }
+  .viewer { height: auto; min-height: 0; padding-top: calc(70px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 18px; padding-bottom: 28px; }
+  .stage, .side, .controls, .credit { position: static; transform: none; }
+  .stage { order: 2; }
+  .side { order: 1; width: auto; }
+  .controls { order: 3; width: auto; margin: 0 20px; }
+  .credit { order: 4; max-width: none; }
+  .scroll-cue { display: none; }
+  .disk { width: 100%; }
+  .info, .clock { display: none; }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+  .doc-inner { padding-block: 56px 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="top gutter">
+  <a class="brand" href="#top"><i aria-hidden="true"></i><span>Sun<b>Fire</b></span></a>
+  <nav class="nav" aria-label="Sections">
+    <a href="#top" class="on">Live</a>
+    <a href="#protocol">Protocol</a>
+    <a href="#data">Data</a>
+    <a href="#trust">Trust</a>
+  </nav>
+  <span class="status" id="status">Connecting</span>
+</header>
+
+<main>
+  <!-- ================= VIEWER ================= -->
+  <section class="viewer" id="top" aria-label="Live view of the Sun">
+    <div class="stage">
+      <div class="disk" id="disk">
+        <video id="vid" muted playsinline loop autoplay preload="auto" aria-label="Last 48 hours of the Sun, NASA SDO"></video>
+        <img id="still" alt="Latest image of the Sun from NASA SDO">
+      </div>
+    </div>
+
+    <div class="side gutter">
+      <div class="chans" id="chans" role="group" aria-label="Wavelength"></div>
+      <div class="info" id="info">
+        <div class="row1"><span id="i-name">AIA 171</span><span class="temp" id="i-temp">600,000 K</span></div>
+        <p id="i-desc">Quiet corona. Magnetic loops and coronal structure.</p>
+      </div>
+      <div class="clock" id="clock">– <span>UTC</span></div>
+    </div>
+
+    <div class="hud gutter" aria-live="polite">
+      <div class="hud-item"><small>X-ray now</small><strong id="h-class">–</strong></div>
+      <div class="hud-item"><small>Kp index</small><strong id="h-kp">–</strong></div>
+      <div class="hud-item"><small>Last M+ flare</small><strong id="h-last">–</strong></div>
+    </div>
+
+    <div class="controls">
+      <div class="track" id="track" role="slider" tabindex="0" aria-label="Timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div class="done" id="done"></div><div class="knob" id="knob"></div>
+      </div>
+      <div class="tl-labels"><span>−48 h</span><span class="now" id="frame-time">–<span> UTC</span></span><span>now</span></div>
+      <div class="btns">
+        <button class="btn" data-rate="0.5" aria-pressed="false">0.5×</button>
+        <button class="btn" data-rate="1" aria-pressed="true">1×</button>
+        <button class="btn" data-rate="2" aria-pressed="false">2×</button>
+        <button class="btn" data-rate="4" aria-pressed="false">4×</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn" id="back" aria-label="Step back">‹</button>
+        <button class="play" id="play" aria-label="Pause"><svg viewBox="0 0 16 16" id="play-ico"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg></button>
+        <button class="btn" id="fwd" aria-label="Step forward">›</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn" id="live" aria-pressed="false">Still 4K</button>
+      </div>
+    </div>
+
+    <div class="credit gutter">NASA/SDO and the AIA, EVE and HMI science teams. Near real time, about 15–20 min behind.</div>
+    <a class="scroll-cue gutter" href="#protocol">Protocol ↓</a>
+  </section>
+
+  <!-- ================= DOCUMENT ================= -->
+  <div class="doc">
+    <div class="doc-inner gutter">
+
+      <section class="block" id="protocol">
+        <div><span class="kicker">SunFire · $SFIRE</span><h2>A token governed by the Sun</h2></div>
+        <div>
+          <p class="lead">SunFire is a Solana token whose supply is governed by the Sun. Solar flares and geomagnetic storms recorded by NOAA's GOES satellites trigger buybacks and burns on-chain, executed by a public program that no one, including the team, can override.</p>
+          <div class="facts">
+            <div><small>Network</small><strong>Solana</strong></div>
+            <div><small>Data source</small><strong>NOAA GOES-18</strong></div>
+            <div><small>Oracle</small><strong>Switchboard</strong></div>
+            <div><small>Fee split</small><strong>50 burn · 50 dev</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block">
+        <div><span class="kicker">Mechanism</span><h2>How a flare becomes a burn</h2></div>
+        <ol class="flow">
+          <li><div><b>The Sun erupts</b><span>GOES satellites measure solar X-ray flux every minute. NOAA classifies each flare from A to X on a logarithmic scale.</span></div></li>
+          <li><div><b>The oracle confirms</b><span>Switchboard publishes the NOAA reading on Solana. The SunFire program reads it directly and rejects any event it has already processed.</span></div></li>
+          <li><div><b>Anyone triggers</b><span>Any wallet can call the program once the data qualifies. There is no team server and no manual switch.</span></div></li>
+          <li><div><b>Buyback and burn</b><span>The program draws a verifiable random share of the burn vault, buys $SFIRE on the market and burns it.</span></div></li>
+        </ol>
+      </section>
+
+      <section class="block">
+        <div><span class="kicker">Burn schedule</span><h2>Bigger events, bigger burns</h2></div>
+        <div>
+          <div class="table-wrap" style="margin-top:0">
+            <table class="tiers">
+              <thead><tr><th>Event</th><th>Threshold</th><th>Burn vault used</th><th>Frequency</th></tr></thead>
+              <tbody>
+                <tr><td><span class="tag m">M-class</span></td><td class="pct">≥ 10⁻⁵ W/m²</td><td class="pct">1–5 %</td><td class="note">Several per month in active periods</td></tr>
+                <tr><td><span class="tag x">X-class</span></td><td class="pct">≥ 10⁻⁴ W/m²</td><td class="pct">10–25 %</td><td class="note">Rarer as the solar cycle declines</td></tr>
+                <tr><td><span class="tag g">Storm</span></td><td class="pct">Kp ≥ 8 · G4–G5</td><td class="pct">30–50 %</td><td class="note">Rare. Auroras at mid-latitudes</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note" style="margin:14px 0 0">Each amount is drawn at random within its range using Switchboard verifiable randomness, so the size of the next burn cannot be known in advance.</p>
+        </div>
+      </section>
+
+      <section class="block" id="data">
+        <div><span class="kicker">Live data</span><h2>Solar conditions now</h2></div>
+        <div class="dash">
+          <div class="card">
+            <h3>Solar X-ray flux <span>GOES 0.1–0.8 nm · 24 h</span></h3>
+            <canvas id="xray" aria-label="X-ray flux over the last 24 hours, log scale"></canvas>
+            <p class="err" id="xray-err" hidden></p>
+          </div>
+          <div class="stack">
+            <div class="card">
+              <h3>Flare probability <span>NOAA · 24 h</span></h3>
+              <div class="gauge">
+                <div class="g-row"><span>C-class</span><div class="g-track"><div class="g-fill" id="p-c"></div></div><span id="pv-c">–</span></div>
+                <div class="g-row"><span>M-class</span><div class="g-track"><div class="g-fill" id="p-m"></div></div><span id="pv-m">–</span></div>
+                <div class="g-row x"><span>X-class</span><div class="g-track"><div class="g-fill" id="p-x"></div></div><span id="pv-x">–</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Planetary Kp <span id="kp-sub">24 h · storm at 8</span></h3>
+              <div class="kp-bars" id="kp-bars"></div>
+              <div class="kp-axis" id="kp-axis"></div>
+            </div>
+          </div>
+          <div class="card span2">
+            <h3>Flare log <span>GOES · last 7 days</span></h3>
+            <div class="table-wrap">
+              <table class="log">
+                <thead><tr><th>Class</th><th>Peak UTC</th><th>Start</th><th>End</th><th>Program</th></tr></thead>
+                <tbody id="flares"><tr><td colspan="5" class="empty">Loading flares…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" id="trust">
+        <div><span class="kicker">Trust model</span><h2>Built so no one can cheat</h2></div>
+        <div class="grid2">
+          <div class="card" style="grid-column:1/-1"><h3>Transparent fee split</h3><p>Trading fees are split on-chain: 50 % to the burn vault owned by the program, 50 % to the development wallet that funds the project. The burn share can only leave the vault through a buyback and burn.</p></div>
+          <div class="card"><h3>Fair launch</h3><p>No team allocation and no presale. Every token in circulation was bought on the open market, so there is no hidden supply waiting to be sold.</p></div>
+          <div class="card"><h3>Public, permissionless trigger</h3><p>Anyone can execute a qualifying event. If the team disappeared tomorrow, the Sun would keep burning.</p></div>
+          <div class="card"><h3>Holders are never touched</h3><p>Burns only destroy tokens the program has bought back with the burn vault. Tokens in holders' wallets are never affected.</p></div>
+        </div>
+      </section>
+
+      <section class="block">
+        <div><span class="kicker">Limits</span><h2>What to know</h2></div>
+        <ul class="limits">
+          <li>Solar Cycle 25 peaked around 2024–2025. X-class flares will become less frequent in the coming years. M-class flares remain common.</li>
+          <li>The program relies on the Switchboard oracle to relay NOAA data faithfully.</li>
+          <li>NOAA occasionally publishes a flare before its final class. Such events are processed only once the class is confirmed.</li>
+          <li>SunFire is an experimental token. Nothing on this site is financial advice.</li>
+        </ul>
+      </section>
+    </div>
+
+    <footer>
+      <div class="doc-inner gutter">
+        <p>Data: NOAA Space Weather Prediction Center. Imagery: NASA/SDO and the AIA, EVE and HMI science teams. SunFire is not affiliated with or endorsed by NASA or NOAA.</p>
+        <p class="mono">$SFIRE · Solana</p>
+      </div>
+    </footer>
+  </div>
+</main>
+
+<script>
+const SWPC = "https://services.swpc.noaa.gov";
+const SDO = "https://sdo.gsfc.nasa.gov/assets/img/latest/";
+const $ = (id) => document.getElementById(id);
+
+/* ======================= VIEWER ======================= */
+const CHANNELS = [
+  { id: "0171", name: "AIA 171", c: "#f5c542", temp: "600,000 K", desc: "Quiet corona. Magnetic loops and coronal structure." },
+  { id: "0193", name: "AIA 193", c: "#d9915a", temp: "1.2 M K", desc: "Corona and hot flare plasma. Shows coronal holes." },
+  { id: "0304", name: "AIA 304", c: "#ff5a2a", temp: "50,000 K", desc: "Chromosphere. Filaments and prominences." },
+  { id: "0131", name: "AIA 131", c: "#3fd1c8", temp: "10 M K", desc: "Flaring regions. The hottest flare material." },
+  { id: "0094", name: "AIA 94", c: "#3ee07a", temp: "6 M K", desc: "Flaring corona. Active regions during eruptions." },
+  { id: "0211", name: "AIA 211", c: "#a77bff", temp: "2 M K", desc: "Active regions of the corona." },
+  { id: "0335", name: "AIA 335", c: "#4f7dff", temp: "2.5 M K", desc: "Active-region corona." },
+  { id: "1600", name: "AIA 1600", c: "#e8e04a", temp: "10,000 K", desc: "Upper photosphere and transition region." },
+  { id: "HMIB", name: "HMI Mag", c: "#9a9a9a", temp: "Magnetic", desc: "Magnetogram. Black and white show opposite magnetic polarities." },
+  { id: "HMIIC", name: "HMI Visible", c: "#f0e6d0", temp: "5,800 K", desc: "Visible light. Sunspots as seen by eye." },
+];
+const SPAN_H = 48; // SDO "latest" movies cover roughly the last 48 hours
+let chan = CHANNELS[0];
+let rate = 1, stillMode = false;
+const vid = $("vid"), still = $("still"), disk = $("disk");
+
+function renderChans() {
+  $("chans").innerHTML = CHANNELS.map((c) =>
+    `<button class="chan" style="--c:${c.c}" data-id="${c.id}" aria-pressed="${c.id === chan.id}">${c.name}</button>`).join("");
+  $("chans").querySelectorAll(".chan").forEach((b) => b.addEventListener("click", () => setChan(b.dataset.id)));
+}
+function setChan(id) {
+  chan = CHANNELS.find((c) => c.id === id);
+  $("chans").querySelectorAll(".chan").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === id)));
+  $("info").style.setProperty("--c", chan.c);
+  $("i-name").textContent = chan.name;
+  $("i-temp").textContent = chan.temp;
+  $("i-desc").textContent = chan.desc;
+  loadMedia();
+}
+const stamp = () => Math.floor(Date.now() / 180000);
+function loadMedia() {
+  const want = chan.id;
+  still.src = SDO + "latest_1024_" + want + ".jpg?t=" + stamp();
+  const hi = new Image();
+  hi.onload = () => { if (chan.id === want) still.src = hi.src; };
+  hi.src = SDO + "latest_4096_" + want + ".jpg?t=" + stamp();
+  if (!stillMode) {
+    vid.src = SDO + "mpeg/latest_1024_" + want + ".mp4?t=" + Math.floor(Date.now() / 3600e3);
+    vid.playbackRate = rate;
+    vid.play().catch(() => {});
+  }
+}
+// If the movie can't load, show the still image instead.
+vid.addEventListener("error", () => disk.classList.add("still"));
+vid.addEventListener("loadeddata", () => { vid.playbackRate = rate; if (!stillMode) disk.classList.remove("still"); });
+
+document.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => {
+  rate = Number(b.dataset.rate);
+  vid.playbackRate = rate;
+  document.querySelectorAll("[data-rate]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+}));
+const PAUSE = '<rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/>';
+const PLAY = '<path d="M4 2.5v11a1 1 0 0 0 1.5.86l9-5.5a1 1 0 0 0 0-1.72l-9-5.5A1 1 0 0 0 4 2.5z"/>';
+function syncPlay() {
+  $("play-ico").innerHTML = vid.paused ? PLAY : PAUSE;
+  $("play").setAttribute("aria-label", vid.paused ? "Play" : "Pause");
+}
+$("play").addEventListener("click", () => {
+  if (stillMode) { toggleStill(false); return; }
+  vid.paused ? vid.play().catch(() => {}) : vid.pause();
+});
+vid.addEventListener("play", syncPlay);
+vid.addEventListener("pause", syncPlay);
+const step = (d) => { if (!vid.duration) return; vid.pause(); vid.currentTime = Math.min(Math.max(0, vid.currentTime + d), vid.duration); };
+$("back").addEventListener("click", () => step(-0.5));
+$("fwd").addEventListener("click", () => step(0.5));
+
+function toggleStill(on) {
+  stillMode = on;
+  $("live").setAttribute("aria-pressed", String(on));
+  disk.classList.toggle("still", on);
+  if (on) { vid.pause(); setFrameTime(1); } else loadMedia();
+}
+$("live").addEventListener("click", () => toggleStill(!stillMode));
+
+function setFrameTime(frac) {
+  const t = new Date(Date.now() - (1 - frac) * SPAN_H * 3600e3).toISOString();
+  $("frame-time").innerHTML = t.slice(8, 10) + "/" + t.slice(5, 7) + " " + t.slice(11, 16) + "<span> UTC (approx.)</span>";
+  $("done").style.width = frac * 100 + "%";
+  $("knob").style.left = frac * 100 + "%";
+  $("track").setAttribute("aria-valuenow", Math.round(frac * 100));
+}
+vid.addEventListener("timeupdate", () => { if (vid.duration && !stillMode) setFrameTime(vid.currentTime / vid.duration); });
+function seek(e) {
+  const r = $("track").getBoundingClientRect();
+  const frac = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
+  if (stillMode) toggleStill(false);
+  if (vid.duration) vid.currentTime = frac * vid.duration;
+  setFrameTime(frac);
+}
+let dragging = false;
+$("track").addEventListener("pointerdown", (e) => { dragging = true; $("track").setPointerCapture(e.pointerId); seek(e); });
+$("track").addEventListener("pointermove", (e) => { if (dragging) seek(e); });
+$("track").addEventListener("pointerup", () => { dragging = false; });
+$("track").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); });
+
+function tick() {
+  const s = new Date().toISOString();
+  $("clock").innerHTML = s.slice(8, 10) + "/" + s.slice(5, 7) + "/" + s.slice(0, 4) + " " + s.slice(11, 19) + " <span>UTC</span>";
+}
+setInterval(tick, 1000); tick();
+
+/* ======================= DATA ======================= */
+async function getJSON(path) {
+  const r = await fetch(SWPC + path, { cache: "no-store" });
+  if (!r.ok) throw new Error(path + " " + r.status);
+  return r.json();
+}
+function fluxToClass(f) {
+  if (!f || f <= 0) return "–";
+  for (const [L, base] of [["X", 1e-4], ["M", 1e-5], ["C", 1e-6], ["B", 1e-7]]) if (f >= base) return L + (f / base).toFixed(1);
+  return "A" + (f / 1e-8).toFixed(1);
+}
+function setStatus(L) {
+  const el = $("status");
+  el.className = "status";
+  if (L === "X") { el.classList.add("alert"); el.textContent = "Flare mode · X-class"; }
+  else if (L === "M") { el.classList.add("alert"); el.textContent = "M-class flare"; }
+  else if (L === "C") { el.classList.add("watch"); el.textContent = "Active Sun"; }
+  else el.textContent = "Quiet Sun";
+}
+
+let xrayPoints = [];
+function drawXray() {
+  const cv = $("xray");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.scale(dpr, dpr);
+  const css = getComputedStyle(document.documentElement);
+  const col = (n) => css.getPropertyValue(n).trim();
+  const padL = 26, padR = 6, padT = 6, padB = 20;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const lo = -8, hi = -3;
+  const y = (f) => padT + ih * (1 - (Math.log10(f) - lo) / (hi - lo));
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = "11px " + col("--font-mono");
+  ctx.textBaseline = "middle";
+  ["A", "B", "C", "M", "X"].forEach((L, i) => {
+    const top = y(Math.pow(10, lo + i + 1)), bot = y(Math.pow(10, lo + i));
+    ctx.strokeStyle = col("--line");
+    ctx.beginPath(); ctx.moveTo(padL, bot); ctx.lineTo(W - padR, bot); ctx.stroke();
+    ctx.fillStyle = L === "M" ? col("--sun") : L === "X" ? col("--flare") : col("--muted");
+    ctx.fillText(L, 6, (top + bot) / 2);
+  });
+  ctx.setLineDash([4, 4]); ctx.strokeStyle = col("--sun");
+  ctx.beginPath(); ctx.moveTo(padL, y(1e-5)); ctx.lineTo(W - padR, y(1e-5)); ctx.stroke();
+  ctx.setLineDash([]);
+  if (!xrayPoints.length) return;
+  const t0 = xrayPoints[0].t, t1 = xrayPoints[xrayPoints.length - 1].t;
+  const x = (t) => padL + iw * ((t - t0) / Math.max(1, t1 - t0));
+  ctx.fillStyle = col("--muted"); ctx.textAlign = "center";
+  const six = 6 * 3600e3;
+  for (let t = Math.ceil(t0 / six) * six; t <= t1; t += six) {
+    if (x(t) < padL + 20 || x(t) > W - padR - 20) continue;
+    ctx.fillText(String(new Date(t).getUTCHours()).padStart(2, "0") + ":00", x(t), H - 8);
+  }
+  ctx.textAlign = "start";
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + ih);
+  grad.addColorStop(0, "rgba(255,138,31,.4)"); grad.addColorStop(1, "rgba(255,138,31,0)");
+  const path = () => xrayPoints.forEach((p, i) => { const X = x(p.t), Y = y(p.f); i ? ctx.lineTo(X, Y) : ctx.moveTo(X, Y); });
+  ctx.beginPath(); path(); ctx.lineTo(x(t1), padT + ih); ctx.lineTo(x(t0), padT + ih); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.beginPath(); path(); ctx.strokeStyle = col("--gold"); ctx.lineWidth = 1.5; ctx.stroke();
+  const last = xrayPoints[xrayPoints.length - 1];
+  ctx.beginPath(); ctx.arc(x(last.t), y(last.f), 4, 0, Math.PI * 2); ctx.fillStyle = col("--sun"); ctx.fill();
+}
+async function loadXray() {
+  try {
+    const data = await getJSON("/json/goes/primary/xrays-1-day.json");
+    xrayPoints = data.filter((d) => d.energy === "0.1-0.8nm" && d.flux > 0)
+      .map((d) => ({ t: Date.parse(d.time_tag), f: Math.min(Math.max(d.flux, 1e-8), 1e-3) }))
+      .sort((a, b) => a.t - b.t);
+    $("xray-err").hidden = true;
+    drawXray();
+    const last = xrayPoints[xrayPoints.length - 1];
+    if (last) { const c = fluxToClass(last.f); $("h-class").textContent = c; setStatus(c[0]); }
+  } catch (e) {
+    $("xray-err").textContent = "X-ray data unavailable. Retrying every minute.";
+    $("xray-err").hidden = false;
+  }
+}
+async function loadFlares() {
+  try {
+    const data = await getJSON("/json/goes/primary/xray-flares-7-day.json");
+    const rows = data.map((d) => ({ ...d, sortT: Date.parse(d.max_time || d.begin_time) })).sort((a, b) => b.sortT - a.sortT);
+    const big = rows.find((r) => /^[MX]/.test(r.max_class || ""));
+    if (big) {
+      const h = Math.round((Date.now() - big.sortT) / 3600e3);
+      $("h-last").textContent = big.max_class + " · " + (h < 48 ? h + " h ago" : Math.round(h / 24) + " d ago");
+    } else $("h-last").textContent = "None in 7 d";
+    const fmt = (s) => s ? s.slice(5, 16).replace("T", " ") : "–";
+    $("flares").innerHTML = rows.length ? rows.map((r) => {
+      const cls = r.max_class || "Pending";
+      const L = r.max_class ? cls[0] : "";
+      const trig = L === "X" ? "Burn 10–25 %" : L === "M" ? "Burn 1–5 %" : "";
+      return `<tr><td><span class="cls ${L}">${cls}</span></td><td>${fmt(r.max_time)}</td><td>${fmt(r.begin_time)}</td><td>${fmt(r.end_time)}</td><td class="trig">${trig}</td></tr>`;
+    }).join("") : `<tr><td colspan="5" class="empty">No flares in the last 7 days.</td></tr>`;
+  } catch (e) {
+    $("flares").innerHTML = `<tr><td colspan="5" class="err">Flare log unavailable. Retrying every minute.</td></tr>`;
+  }
+}
+async function loadKp() {
+  try {
+    let data = await getJSON("/products/noaa-planetary-k-index.json");
+    if (Array.isArray(data[0])) data = data.slice(1).map((r) => ({ time_tag: r[0], Kp: parseFloat(r[1]) }));
+    const last = data.slice(-8);
+    const g = (kp) => kp >= 9 ? "G5" : kp >= 8 ? "G4" : kp >= 7 ? "G3" : kp >= 6 ? "G2" : kp >= 5 ? "G1" : "";
+    $("kp-bars").innerHTML = last.map((d) => {
+      const kp = Number(d.Kp);
+      return `<div class="${kp >= 8 ? "s" : kp >= 5 ? "g" : ""}" style="height:${(kp / 9) * 100}%" title="Kp ${kp.toFixed(2)}"></div>`;
+    }).join("");
+    $("kp-axis").innerHTML = last.map((d) => `<span>${String(d.time_tag).slice(11, 13)}h</span>`).join("");
+    const now = Number(last[last.length - 1].Kp);
+    $("h-kp").textContent = now.toFixed(1) + (g(now) ? " · " + g(now) : "");
+    if (now >= 8) $("kp-sub").textContent = g(now) + " storm in progress";
+  } catch (e) {
+    $("kp-sub").textContent = "Kp unavailable";
+  }
+}
+async function loadOdds() {
+  try {
+    const t = (await getJSON("/json/solar_probabilities.json"))[0] || {};
+    [["c", t.c_class_1_day], ["m", t.m_class_1_day], ["x", t.x_class_1_day]].forEach(([k, v]) => {
+      const n = Number(v); if (!isFinite(n)) return;
+      $("p-" + k).style.width = n + "%"; $("pv-" + k).textContent = n + "%";
+    });
+  } catch (e) { /* keep dashes */ }
+}
+
+function refresh() { loadXray(); loadFlares(); loadKp(); loadOdds(); }
+renderChans();
+setChan("0171");
+refresh();
+setInterval(refresh, 60e3);
+setInterval(() => { if (stillMode) still.src = SDO + "latest_4096_" + chan.id + ".jpg?t=" + stamp(); }, 3 * 60e3);
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(drawXray, 120); });
+</script>
+</body>
+</html>

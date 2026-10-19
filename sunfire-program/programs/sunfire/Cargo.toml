@@ -1,0 +1,25 @@
+[package]
+name = "sunfire"
+version = "0.1.0"
+edition = "2021"
+description = "SunFire: buyback and burn triggered by real solar activity"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sunfire"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "0.32.1"
+anchor-spl = "0.32.1"
+switchboard-on-demand = "0.13.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "allow" }
