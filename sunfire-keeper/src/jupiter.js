@@ -59,6 +59,53 @@ export async function buildSwap({ api, apiKey = "", fetchFn = fetch, amount, sfi
   };
 }
 
+/**
+ * Bot-only mode: a SOL → $SFIRE route bought by the bot wallet itself, like
+ * any wallet. Jupiter wraps the SOL and unwraps what is left.
+ */
+export async function buildWalletSwap({ api, apiKey = "", fetchFn = fetch, amount, sfireMint, user, slippageBps, dexes = "" }) {
+  if (amount <= 0n) throw new Error("Swap amount must be positive");
+  const headers = { accept: "application/json", "content-type": "application/json" };
+  if (apiKey) headers["x-api-key"] = apiKey;
+
+  const params = new URLSearchParams({
+    inputMint: WSOL_MINT.toBase58(),
+    outputMint: sfireMint.toBase58(),
+    amount: amount.toString(),
+    slippageBps: String(slippageBps),
+    swapMode: "ExactIn",
+  });
+  if (dexes) params.set("dexes", dexes);
+  const quoteRes = await fetchFn(`${api}/quote?${params}`, { headers });
+  if (!quoteRes.ok) throw new Error(`Jupiter quote ${quoteRes.status}: ${await quoteRes.text()}`);
+  const quote = await quoteRes.json();
+
+  const swapRes = await fetchFn(`${api}/swap-instructions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ quoteResponse: quote, userPublicKey: user.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true }),
+  });
+  if (!swapRes.ok) throw new Error(`Jupiter swap-instructions ${swapRes.status}: ${await swapRes.text()}`);
+  const body = await swapRes.json();
+  if (body.error) throw new Error(`Jupiter: ${body.error}`);
+
+  const swap = toIx(body.swapInstruction);
+  if (!swap.programId.equals(JUPITER_V6)) throw new Error(`Unexpected swap program ${swap.programId.toBase58()}`);
+  return {
+    inAmount: BigInt(quote.inAmount),
+    outAmount: BigInt(quote.outAmount),
+    minOut: BigInt(quote.otherAmountThreshold),
+    priceImpactPct: Number(quote.priceImpactPct ?? 0),
+    instructions: [
+      ...(body.computeBudgetInstructions ?? []).map(toIx),
+      ...(body.setupInstructions ?? []).map(toIx),
+      swap,
+      ...(body.cleanupInstruction ? [toIx(body.cleanupInstruction)] : []),
+    ],
+    lookupTables: (body.addressLookupTableAddresses ?? []).map((a) => new PublicKey(a)),
+  };
+}
+
 function toIx(ix) {
   return new TransactionInstruction({
     programId: new PublicKey(ix.programId),

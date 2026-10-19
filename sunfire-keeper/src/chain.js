@@ -9,7 +9,28 @@ export class Chain {
     this.signer = signer;
     this.dryRun = dryRun;
     this.log = log;
-    this.pdas = pdas(programId);
+    // The bot-only mode has no program.
+    this.pdas = programId ? pdas(programId) : null;
+  }
+
+  async accountData(pubkey) {
+    return (await this.conn.getAccountInfo(pubkey))?.data ?? null;
+  }
+
+  async tokenBalance(pubkey) {
+    const info = await this.conn.getAccountInfo(pubkey);
+    // SPL Token and Token-2022 accounts both keep the amount at bytes 64..72.
+    return info ? Buffer.from(info.data).readBigUInt64LE(64) : 0n;
+  }
+
+  async latestBlockhash() {
+    return (await this.conn.getLatestBlockhash()).blockhash;
+  }
+
+  /** Memo texts of the most recent transactions signed by or sent to `pubkey`. */
+  async recentMemos(pubkey, limit = 200) {
+    const sigs = await this.conn.getSignaturesForAddress(pubkey, { limit });
+    return sigs.filter((s) => !s.err && s.memo).map((s) => s.memo);
   }
 
   async readConfig() {

@@ -1,6 +1,42 @@
 # SunFire keeper
 
-The bot that runs the SunFire program. Every minute it:
+The bot behind SunFire burns. It runs in one of two modes:
+
+- **Bot-only mode** (`SFIRE_MINT` set, no `PROGRAM_ID`): no program is deployed. Pump.fun fee sharing pays part of the creator fees to the bot wallet, and the bot buys and burns $SFIRE from that wallet on every solar event.
+- **Program mode** (`PROGRAM_ID` set): the bot drives the SunFire program in `sunfire-program/`.
+
+Both start in dry-run mode: every transaction is simulated, nothing is sent.
+
+## Bot-only mode
+
+Every minute the bot:
+
+1. Pays out the token's shared creator fees (`distribute_creator_fees`, and `transfer_creator_fees_to_pump` after graduation) once they reach `CRANK_MIN_SOL`, at most every `FEE_CRANK_MINUTES`. Anyone can call these; the bot pays the transaction fee.
+2. Reads NOAA's flare lists and planetary Kp. Every M or X flare and every G4+ storm (Kp ≥ 8) that started within `MAX_EVENT_AGE_HOURS` is an event, named after its NOAA start time.
+3. For the oldest event not yet bought, spends a random share of its balance above `RESERVE_SOL`: 1–5 % on an M flare, 10–25 % on an X flare, 30–50 % on a storm. It buys $SFIRE through Jupiter and burns everything bought.
+
+Each buyback carries a public memo, for example `SunFire buyback key=M-20261019T1300 event="M2.0 begin 2026-10-19T13:00:00Z" share=4.77% sol=0.0467`, and each burn a `SunFire burn key=… amount=…` memo. The bot reads its own memos back, so an event is never bought twice, even after a restart. Anyone can follow the bot wallet on an explorer and compare each event with NOAA.
+
+Holders trust that this wallet is only used for burns: unlike the program, nothing on-chain enforces it.
+
+Set up pump.fun fee sharing with the bot wallet as one of the shareholders (for example 50 % dev wallet, 50 % bot wallet).
+
+| Variable | Default | |
+|---|---|---|
+| `SFIRE_MINT` | required | The token's mint address |
+| `KEEPER_SECRET_KEY` | required when live | Bot wallet key, base58 or the JSON array from `solana-keygen` |
+| `RESERVE_SOL` | `0.02` | Kept for transaction fees, never spent on buybacks |
+| `MIN_BUY_SOL` | `0.002` | Smaller buybacks are skipped |
+| `MAX_EVENT_AGE_HOURS` | `6` | Older events are ignored |
+| `FEE_CRANK_MINUTES` | `30` | `0` turns the fee payout off |
+| `CRANK_MIN_SOL` | `0.01` | |
+| `JUPITER_DEXES` | | Optional: restrict buybacks to these Jupiter DEX labels |
+
+`DRY_RUN`, `RPC_URL`, `POLL_SECONDS`, `SLIPPAGE_BPS`, `JUPITER_API`, `JUPITER_API_KEY` and `ALERT_WEBHOOK_URL` work as in program mode below.
+
+## Program mode
+
+Every minute the bot:
 
 1. Splits the fee vault once it holds more than `DISTRIBUTE_MIN_SOL`.
 2. Reads the latest GOES X-ray flux and planetary Kp from NOAA SWPC.
@@ -15,7 +51,8 @@ It starts in dry-run mode: every transaction is simulated, nothing is sent.
 
 ```bash
 npm install
-PROGRAM_ID=<program id> npm start          # dry run
+SFIRE_MINT=<mint> npm start                # bot-only mode, dry run
+PROGRAM_ID=<program id> npm start          # program mode, dry run
 npm test
 ```
 
@@ -38,4 +75,4 @@ npm test
 
 ## Deploy on Railway
 
-New service from this repository, Root Directory `sunfire-keeper`, then add the variables above. Keep `DRY_RUN=true` until the program is live and initialized with this keeper's address. The keeper wallet needs a little SOL for fees and account rent.
+New service from this repository, Root Directory `sunfire-keeper`, then add the variables above. Keep `DRY_RUN=true` until the token is live (bot-only mode) or the program is initialized with this keeper's address (program mode). The bot wallet needs a little SOL for fees and account rent: its first buy also pays about 0.004 SOL for its token account and pump.fun's volume accumulator.
