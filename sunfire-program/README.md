@@ -12,6 +12,7 @@ Programme Anchor qui partage les fees de $SFIRE entre le wallet dev et un coffre
 | `distribute` | tout le monde | Vide le coffre des fees : `dev_bps` vers ton wallet, le reste vers le coffre de burn |
 | `arm(tier)` | tout le monde | Lit l'oracle, vérifie que l'événement est réel et nouveau, tire la part au hasard et fixe le budget |
 | `execute` | le keeper uniquement | Achète du $SFIRE via Jupiter avec exactement ce budget, puis brûle tout ce qui a été acheté |
+| `disarm` | le keeper ou l'admin | Annule un burn armé qui ne peut pas être exécuté (pas de route Jupiter, pas de liquidité). Aucun SOL ne bouge : le budget reste dans le coffre de burn, et l'événement reste compté |
 | `sync` | tout le monde | Réarme les déclencheurs quand le Soleil redevient calme |
 | `update_settings` | toi, jusqu'au renoncement | Change le wallet dev, la part dev, le keeper ou les feeds |
 | `renounce` | toi, une fois | Supprime l'admin pour toujours. Plus rien ne peut être modifié |

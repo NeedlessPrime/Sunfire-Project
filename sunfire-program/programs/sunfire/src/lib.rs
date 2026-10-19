@@ -10,6 +10,8 @@
 //!                  Jupiter and burns every token bought. Restricted because
 //!                  the caller picks `min_out`: an open call would let anyone
 //!                  sandwich their own swap and drain the vault.
+//!   `disarm`     – keeper or admin. Cancels an armed burn that cannot be
+//!                  executed, without moving any lamports.
 //!
 //! Splitting it in two lets the caller build a Jupiter route for an amount
 //! that was decided on-chain, which a single instruction cannot do.
@@ -23,7 +25,7 @@ use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 pub mod math;
 use math::{Episode, Tier};
 
-declare_id!("11111111111111111111111111111111");
+declare_id!("5mSUozcjURKYk6f3jmd8yuibZfxcyDg8i7TzdFNPk8ae");
 
 pub const JUPITER_V6: Pubkey = pubkey!("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 pub const WSOL_MINT: Pubkey = pubkey!("So11111111111111111111111111111111111111112");
@@ -165,6 +167,20 @@ pub mod sunfire {
         c.pending_tier = tier as u8;
         c.events += 1;
         emit!(BurnArmed { tier: tier as u8, bps, budget, slot });
+        Ok(())
+    }
+
+    /// Keeper or admin. Cancels an armed burn that cannot be executed (no
+    /// Jupiter route, no liquidity), so it does not block every later event.
+    /// No lamports move: the budget stays in the burn vault. The event stays
+    /// marked as fired, so the same flare cannot be armed again.
+    pub fn disarm(ctx: Context<Disarm>) -> Result<()> {
+        let c = &mut ctx.accounts.config;
+        require!(c.pending_budget > 0, SunfireError::NothingArmed);
+        let tier = c.pending_tier;
+        let budget = c.pending_budget;
+        c.pending_budget = 0;
+        emit!(BurnDisarmed { tier, budget, by: ctx.accounts.authority.key() });
         Ok(())
     }
 
@@ -411,6 +427,18 @@ pub struct Arm<'info> {
 }
 
 #[derive(Accounts)]
+pub struct Disarm<'info> {
+    pub authority: Signer<'info>,
+    #[account(
+        mut, seeds = [CONFIG_SEED], bump = config.bump,
+        constraint = authority.key() == config.keeper
+            || (config.admin != Pubkey::default() && authority.key() == config.admin)
+            @ SunfireError::NotKeeper
+    )]
+    pub config: Account<'info, Config>,
+}
+
+#[derive(Accounts)]
 pub struct Execute<'info> {
     pub executor: Signer<'info>,
     #[account(
@@ -460,6 +488,12 @@ pub struct BurnArmed {
     pub slot: u64,
 }
 #[event]
+pub struct BurnDisarmed {
+    pub tier: u8,
+    pub budget: u64,
+    pub by: Pubkey,
+}
+#[event]
 pub struct Burned {
     pub tier: u8,
     pub sol_spent: u64,
@@ -499,6 +533,6 @@ pub enum SunfireError {
     VaultTouched,
     #[msg("Wrong sysvar account")]
     BadSysvar,
-    #[msg("Only the keeper can execute a burn")]
+    #[msg("Only the keeper (or the admin, for disarm) can do this")]
     NotKeeper,
 }

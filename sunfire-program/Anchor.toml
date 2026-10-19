@@ -2,7 +2,7 @@
 anchor_version = "0.32.1"
 
 [programs.devnet]
-sunfire = "11111111111111111111111111111111"
+sunfire = "5mSUozcjURKYk6f3jmd8yuibZfxcyDg8i7TzdFNPk8ae"
 
 [provider]
 cluster = "devnet"

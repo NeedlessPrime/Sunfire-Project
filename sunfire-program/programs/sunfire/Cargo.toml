@@ -15,6 +15,9 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+# Devnet builds only: makes read_feed accept feeds owned by Switchboard's
+# devnet program instead of the mainnet one.
+devnet = ["switchboard-on-demand/devnet"]
 
 [dependencies]
 anchor-lang = "0.32.1"
