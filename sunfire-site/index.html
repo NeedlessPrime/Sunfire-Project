@@ -313,7 +313,7 @@ footer p { margin: 0; max-width: 70ch; }
           <div class="facts">
             <div><small>Network</small><strong>Solana</strong></div>
             <div><small>Data source</small><strong>NOAA GOES-18</strong></div>
-            <div><small>Oracle</small><strong>Switchboard</strong></div>
+            <div><small>Data</small><strong>NOAA, on-chain</strong></div>
             <div><small>Fee split</small><strong>50 burn · 50 dev</strong></div>
           </div>
         </div>
@@ -323,8 +323,8 @@ footer p { margin: 0; max-width: 70ch; }
         <div><span class="kicker">Mechanism</span><h2>How a flare becomes a burn</h2></div>
         <ol class="flow">
           <li><div><b>The Sun erupts</b><span>GOES satellites measure solar X-ray flux every minute. NOAA classifies each flare from A to X on a logarithmic scale.</span></div></li>
-          <li><div><b>The oracle confirms</b><span>Switchboard publishes the NOAA reading on Solana. The SunFire program reads it directly and rejects any event it has already processed.</span></div></li>
-          <li><div><b>Anyone confirms</b><span>Any wallet can confirm a qualifying event on-chain. The program checks the oracle, refuses duplicates and fixes the size of the burn.</span></div></li>
+          <li><div><b>The reading goes on-chain</b><span>The SunFire keeper reads the NOAA GOES feed and publishes the reading on Solana. Each reading is stored with its time, so anyone can check it against NOAA's public data.</span></div></li>
+          <li><div><b>The program checks</b><span>The program verifies the flare class or storm level, refuses events it has already processed and fixes the size of the burn.</span></div></li>
           <li><div><b>Buyback and burn</b><span>The SunFire keeper spends exactly that amount from the burn vault to buy $SFIRE through Jupiter, then the program burns every token bought.</span></div></li>
         </ol>
       </section>
@@ -387,7 +387,7 @@ footer p { margin: 0; max-width: 70ch; }
         <div class="grid2">
           <div class="card" style="grid-column:1/-1"><h3>Transparent fee split</h3><p>Trading fees are split on-chain: 50 % to the burn vault owned by the program, 50 % to the development wallet. The burn share can only leave the vault through a buyback and burn. Tokens in holders' wallets are never touched.</p></div>
           <div class="card"><h3>Fair launch</h3><p>SunFire launches with no team allocation and no presale, so there is no hidden supply waiting to be sold.</p></div>
-          <div class="card"><h3>One event, one burn</h3><p>Anyone can confirm a qualifying event, and the program refuses duplicates. The keeper that executes buybacks can only spend the exact amount the program fixed.</p></div>
+          <div class="card"><h3>One event, one burn</h3><p>Every event is recorded on-chain, and the program refuses duplicates. The keeper that executes buybacks can only spend the exact amount the program fixed.</p></div>
         </div>
       </section>
 
@@ -395,7 +395,7 @@ footer p { margin: 0; max-width: 70ch; }
         <div><span class="kicker">Limits</span><h2>What to know</h2></div>
         <ul class="limits">
           <li>Solar Cycle 25 peaked around 2024–2025. X-class flares will become less frequent in the coming years. M-class flares remain common.</li>
-          <li>The program relies on the Switchboard oracle to relay NOAA data faithfully.</li>
+          <li>NOAA readings are published by the SunFire keeper. They can be checked against NOAA, but the program trusts the keeper to report them faithfully.</li>
           <li>Events are detected from the GOES X-ray flux itself, not from NOAA's final flare classification.</li>
           <li>Burn amounts are derived from recent on-chain data, not yet from verifiable randomness.</li>
           <li>SunFire is an experimental token. Nothing on this site is financial advice.</li>
