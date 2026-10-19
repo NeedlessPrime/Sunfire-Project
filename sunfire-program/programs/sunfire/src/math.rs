@@ -1,6 +1,6 @@
 //! Pure logic, kept free of Solana types so it can be unit-tested on any machine.
 
-/// The program scales raw feed values before comparing them. X-ray flux in
+/// The program scales raw NOAA readings before comparing them. X-ray flux in
 /// W/m² is multiplied by 1e9, so an M1.0 flare (1e-5 W/m²) reads 10_000.
 pub const XRAY_SCALE_M: u64 = 10_000;
 pub const XRAY_SCALE_X: u64 = 100_000;
@@ -104,21 +104,6 @@ pub fn split_fees(amount: u64, dev_bps: u16) -> (u64, u64) {
     (dev, amount - dev)
 }
 
-/// Converts a fixed-point value (mantissa, scale) to an integer multiplied by
-/// 10^`mul_pow`, rounding down. Negative values return None.
-pub fn scaled_u64(mantissa: i128, scale: u32, mul_pow: u32) -> Option<u64> {
-    if mantissa < 0 {
-        return None;
-    }
-    let m = mantissa as u128;
-    let v = if mul_pow >= scale {
-        m.checked_mul(10u128.checked_pow(mul_pow - scale)?)?
-    } else {
-        m / 10u128.checked_pow(scale - mul_pow)?
-    };
-    u64::try_from(v).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -187,16 +172,5 @@ mod tests {
     fn budget_math() {
         assert_eq!(budget(10_000_000_000, 100), 100_000_000); // 1 % of 10 SOL
         assert_eq!(budget(u64::MAX, 5_000), u64::MAX / 2);
-    }
-
-    #[test]
-    fn decimal_conversion() {
-        // Switchboard precision is 18 decimals. 1.5e-5 W/m² * 1e9 = 15_000.
-        let flux = 15_000_000_000_000i128; // 0.000015 with scale 18
-        assert_eq!(scaled_u64(flux, 18, 9), Some(15_000));
-        // Kp 8.33 -> 833
-        assert_eq!(scaled_u64(833, 2, 2), Some(833));
-        assert_eq!(scaled_u64(8_330_000_000_000_000_000, 18, 2), Some(833));
-        assert_eq!(scaled_u64(-1, 18, 2), None);
     }
 }

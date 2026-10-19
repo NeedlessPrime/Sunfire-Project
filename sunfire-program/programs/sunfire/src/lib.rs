@@ -3,9 +3,14 @@
 //! reaches storm level (G4+), a share of the burn vault is spent to buy
 //! $SFIRE through Jupiter and burn it.
 //!
+//! NOAA data reaches the chain through the keeper: it signs the reading
+//! (X-ray flux or Kp) with the time NOAA recorded it, and every reading is
+//! emitted in an event so anyone can compare it with NOAA's public data.
+//!
 //! Flow per event:
-//!   1. `arm`     – anyone. Reads the Switchboard feed, checks the event is
-//!                  new, draws the share and records the exact budget.
+//!   1. `arm`     – the keeper. Submits the NOAA reading, the program checks
+//!                  the threshold and that the event is new, draws the share
+//!                  and records the exact budget.
 //!   2. `execute` – the keeper only. Swaps exactly that budget through
 //!                  Jupiter and burns every token bought. Restricted because
 //!                  the caller picks `min_out`: an open call would let anyone
@@ -21,7 +26,6 @@ use anchor_lang::solana_program::{instruction::Instruction, program::invoke_sign
 use anchor_lang::system_program;
 use anchor_spl::token::{self, Mint, SyncNative, Token, TokenAccount};
 use anchor_spl::token_interface::{self, Burn, Mint as SfireMint, TokenAccount as SfireAccount, TokenInterface};
-use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
 pub mod math;
 use math::{Episode, Tier};
@@ -35,9 +39,10 @@ pub const CONFIG_SEED: &[u8] = b"config";
 pub const FEE_VAULT_SEED: &[u8] = b"fee_vault";
 pub const BURN_VAULT_SEED: &[u8] = b"burn_vault";
 
-/// A feed reading older than this many slots (about 1 minute) is refused.
-pub const MAX_STALE_SLOTS: u64 = 150;
-pub const MIN_SAMPLES: u32 = 1;
+/// A reading recorded by NOAA more than 6 hours ago is refused.
+pub const MAX_READING_AGE: i64 = 6 * 3600;
+/// Tolerance for a reading timestamped slightly after the chain clock.
+pub const MAX_CLOCK_DRIFT: i64 = 300;
 /// Lamports kept in each system-owned vault so it stays rent-exempt.
 pub const VAULT_FLOOR: u64 = 1_000_000;
 
@@ -49,8 +54,6 @@ pub mod sunfire {
         ctx: Context<Initialize>,
         dev_wallet: Pubkey,
         dev_bps: u16,
-        xray_feed: Pubkey,
-        kp_feed: Pubkey,
         keeper: Pubkey,
     ) -> Result<()> {
         require!(dev_bps <= math::MAX_DEV_BPS, SunfireError::DevShareTooHigh);
@@ -60,8 +63,6 @@ pub mod sunfire {
         c.dev_wallet = dev_wallet;
         c.dev_bps = dev_bps;
         c.sfire_mint = ctx.accounts.sfire_mint.key();
-        c.xray_feed = xray_feed;
-        c.kp_feed = kp_feed;
         c.bump = ctx.bumps.config;
         c.fee_vault_bump = ctx.bumps.fee_vault;
         c.burn_vault_bump = ctx.bumps.burn_vault;
@@ -73,8 +74,6 @@ pub mod sunfire {
         ctx: Context<AdminOnly>,
         dev_wallet: Pubkey,
         dev_bps: u16,
-        xray_feed: Pubkey,
-        kp_feed: Pubkey,
         keeper: Pubkey,
     ) -> Result<()> {
         require!(dev_bps <= math::MAX_DEV_BPS, SunfireError::DevShareTooHigh);
@@ -82,9 +81,7 @@ pub mod sunfire {
         c.keeper = keeper;
         c.dev_wallet = dev_wallet;
         c.dev_bps = dev_bps;
-        c.xray_feed = xray_feed;
-        c.kp_feed = kp_feed;
-        emit!(SettingsUpdated { dev_wallet, dev_bps, xray_feed, kp_feed, keeper });
+        emit!(SettingsUpdated { dev_wallet, dev_bps, keeper });
         Ok(())
     }
 
@@ -121,35 +118,37 @@ pub mod sunfire {
         Ok(())
     }
 
-    /// Permissionless. Re-arms triggers once flux is back below M and Kp
-    /// back below 8, so the next flare or storm counts as a new event.
-    pub fn sync(ctx: Context<Sync>) -> Result<()> {
-        let slot = Clock::get()?.slot;
-        let xray = read_feed(&ctx.accounts.xray_feed, slot, 9).ok();
-        let kp = read_feed(&ctx.accounts.kp_feed, slot, 2).ok();
+    /// Keeper only. Re-arms triggers once the current NOAA readings are back
+    /// below M (X-ray flux, W/m² × 1e9) and below Kp 8 (Kp × 100), so the
+    /// next flare or storm counts as a new event.
+    pub fn sync(ctx: Context<Sync>, xray: u64, kp: u64, observed_at: i64) -> Result<()> {
+        check_reading_time(observed_at)?;
         let c = &mut ctx.accounts.config;
         let mut e = c.episode();
-        e.sync(xray, kp);
+        e.sync(Some(xray), Some(kp));
         c.set_episode(e);
+        emit!(Synced { xray, kp, observed_at });
         Ok(())
     }
 
-    /// Permissionless. Step 1: confirms the event on the oracle and fixes the
-    /// budget of the coming buyback.
-    pub fn arm(ctx: Context<Arm>, tier: u8) -> Result<()> {
+    /// Keeper only. Step 1: checks the NOAA reading reaches the tier and that
+    /// the event is new, then fixes the budget of the coming buyback.
+    /// `reading` is the X-ray flux in W/m² × 1e9 for M and X, Kp × 100 for
+    /// Storm; `observed_at` is NOAA's timestamp for it (unix seconds).
+    pub fn arm(ctx: Context<Arm>, tier: u8, reading: u64, observed_at: i64) -> Result<()> {
         let tier = tier_from_u8(tier)?;
+        check_reading_time(observed_at)?;
         let c = &mut ctx.accounts.config;
         require!(c.pending_budget == 0, SunfireError::BurnPending);
 
         let slot = Clock::get()?.slot;
         let reached = match tier {
             Tier::M | Tier::X => {
-                let x = read_feed(&ctx.accounts.xray_feed, slot, 9)?;
-                let t = math::flare_tier(x).ok_or(SunfireError::NoEvent)?;
+                let t = math::flare_tier(reading).ok_or(SunfireError::NoEvent)?;
                 // An X reading also satisfies an M request.
                 tier == t || (tier == Tier::M && t == Tier::X)
             }
-            Tier::Storm => read_feed(&ctx.accounts.kp_feed, slot, 2)? >= math::KP_STORM,
+            Tier::Storm => reading >= math::KP_STORM,
         };
         require!(reached, SunfireError::NoEvent);
 
@@ -167,7 +166,7 @@ pub mod sunfire {
         c.pending_budget = budget;
         c.pending_tier = tier as u8;
         c.events += 1;
-        emit!(BurnArmed { tier: tier as u8, bps, budget, slot });
+        emit!(BurnArmed { tier: tier as u8, reading, observed_at, bps, budget, slot });
         Ok(())
     }
 
@@ -285,16 +284,14 @@ pub mod sunfire {
 /* Helpers                                                             */
 /* ------------------------------------------------------------------ */
 
-/// Reads a Switchboard pull feed and returns its value multiplied by
-/// 10^`mul_pow`. The X-ray feed reports W/m² (mul 9), the Kp feed reports Kp (mul 2).
-fn read_feed(feed: &AccountInfo, slot: u64, mul_pow: u32) -> Result<u64> {
-    require_keys_eq!(*feed.owner, switchboard_on_demand::sb_pid(), SunfireError::BadFeed);
-    let data = feed.try_borrow_data()?;
-    let parsed = PullFeedAccountData::parse(data).map_err(|_| error!(SunfireError::BadFeed))?;
-    let value = parsed
-        .get_value(slot, MAX_STALE_SLOTS, MIN_SAMPLES, false)
-        .map_err(|_| error!(SunfireError::StaleFeed))?;
-    math::scaled_u64(value.mantissa(), value.scale(), mul_pow).ok_or_else(|| error!(SunfireError::BadFeed))
+/// Refuses a reading NOAA recorded more than 6 hours ago or in the future.
+fn check_reading_time(observed_at: i64) -> Result<()> {
+    let now = Clock::get()?.unix_timestamp;
+    require!(
+        observed_at <= now + MAX_CLOCK_DRIFT && now - observed_at <= MAX_READING_AGE,
+        SunfireError::StaleReading
+    );
+    Ok(())
 }
 
 /// Most recent slot hash mixed with the event counter.
@@ -329,13 +326,11 @@ fn tier_from_u8(t: u8) -> Result<Tier> {
 pub struct Config {
     /// Pubkey::default() once renounced.
     pub admin: Pubkey,
-    /// The only signer allowed to run `execute`.
+    /// Reports NOAA readings (`arm`, `sync`) and runs `execute`.
     pub keeper: Pubkey,
     pub dev_wallet: Pubkey,
     pub dev_bps: u16,
     pub sfire_mint: Pubkey,
-    pub xray_feed: Pubkey,
-    pub kp_feed: Pubkey,
     pub m_fired: bool,
     pub x_fired: bool,
     pub storm_fired: bool,
@@ -410,28 +405,18 @@ pub struct Distribute<'info> {
 
 #[derive(Accounts)]
 pub struct Sync<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    pub keeper: Signer<'info>,
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = keeper @ SunfireError::NotKeeper)]
     pub config: Account<'info, Config>,
-    /// CHECK: owner and layout checked in read_feed.
-    #[account(address = config.xray_feed @ SunfireError::BadFeed)]
-    pub xray_feed: UncheckedAccount<'info>,
-    /// CHECK: owner and layout checked in read_feed.
-    #[account(address = config.kp_feed @ SunfireError::BadFeed)]
-    pub kp_feed: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
 pub struct Arm<'info> {
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump)]
+    pub keeper: Signer<'info>,
+    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = keeper @ SunfireError::NotKeeper)]
     pub config: Account<'info, Config>,
     #[account(seeds = [BURN_VAULT_SEED], bump = config.burn_vault_bump)]
     pub burn_vault: SystemAccount<'info>,
-    /// CHECK: owner and layout checked in read_feed.
-    #[account(address = config.xray_feed @ SunfireError::BadFeed)]
-    pub xray_feed: UncheckedAccount<'info>,
-    /// CHECK: owner and layout checked in read_feed.
-    #[account(address = config.kp_feed @ SunfireError::BadFeed)]
-    pub kp_feed: UncheckedAccount<'info>,
     /// CHECK: address checked in recent_slot_hash.
     pub slot_hashes: UncheckedAccount<'info>,
 }
@@ -488,8 +473,6 @@ pub struct SettingsUpdated {
     pub keeper: Pubkey,
     pub dev_wallet: Pubkey,
     pub dev_bps: u16,
-    pub xray_feed: Pubkey,
-    pub kp_feed: Pubkey,
 }
 #[event]
 pub struct FeesDistributed {
@@ -497,8 +480,17 @@ pub struct FeesDistributed {
     pub burn: u64,
 }
 #[event]
+pub struct Synced {
+    pub xray: u64,
+    pub kp: u64,
+    pub observed_at: i64,
+}
+#[event]
 pub struct BurnArmed {
     pub tier: u8,
+    /// NOAA reading: X-ray flux W/m² × 1e9 (M, X) or Kp × 100 (Storm).
+    pub reading: u64,
+    pub observed_at: i64,
     pub bps: u64,
     pub budget: u64,
     pub slot: u64,
@@ -525,13 +517,11 @@ pub enum SunfireError {
     NotAdmin,
     #[msg("The fee vault is empty")]
     NothingToDistribute,
-    #[msg("Feed account is not the configured Switchboard feed")]
-    BadFeed,
-    #[msg("Feed value is stale or has too few samples")]
-    StaleFeed,
+    #[msg("The NOAA reading is older than 6 hours or in the future")]
+    StaleReading,
     #[msg("Unknown event tier")]
     BadTier,
-    #[msg("The feed does not show this event")]
+    #[msg("The reading does not reach this event's threshold")]
     NoEvent,
     #[msg("This event was already burned")]
     AlreadyTriggered,
@@ -545,10 +535,6 @@ pub enum SunfireError {
     OverBudget,
     #[msg("The swap returned fewer tokens than the minimum")]
     SlippageExceeded,
-    /// No longer raised (native SOL now counts against the budget). Kept so
-    /// the codes of the errors below do not change.
-    #[msg("The swap moved SOL out of the burn vault")]
-    VaultTouched,
     #[msg("Wrong sysvar account")]
     BadSysvar,
     #[msg("Only the keeper (or the admin, for disarm) can do this")]

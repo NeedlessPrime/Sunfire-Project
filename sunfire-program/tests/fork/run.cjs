@@ -1,12 +1,12 @@
 // Step 2 of the mainnet-fork test, against a solana-test-validator started
-// with the accounts listed by prepare.cjs, the program built without the
-// devnet feature, and handcrafted feeds owned by Switchboard's mainnet program.
+// with the accounts listed by prepare.cjs and the program loaded as upgradeable
+// with the deployer as upgrade authority.
 //
 // Runs the real flow on a real pump.fun token with zero real SOL:
 // initialize -> distribute -> arm -> Jupiter route for the armed budget -> execute,
 // then checks the bought tokens were burned and the vault paid exactly the swap.
 //
-//   RPC_URL=http://127.0.0.1:8899 PROGRAM_ID=... DEPLOYER=... MINT=... FEEDS=feeds-index.json \
+//   RPC_URL=http://127.0.0.1:8899 PROGRAM_ID=... DEPLOYER=... MINT=... DEXES="Pump.fun Amm" \
 //   node tests/fork/run.cjs
 
 const crypto = require("crypto");
@@ -25,7 +25,6 @@ const MINT = new PublicKey(process.env.MINT);
 const JUPITER = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
 const LOADER = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 const deployer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(process.env.DEPLOYER, "utf8"))));
-const feeds = JSON.parse(fs.readFileSync(process.env.FEEDS, "utf8"));
 
 const disc = (name) => crypto.createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
 const pda = (seed) => PublicKey.findProgramAddressSync([Buffer.from(seed)], PROGRAM_ID)[0];
@@ -34,6 +33,7 @@ const programData = PublicKey.findProgramAddressSync([PROGRAM_ID.toBuffer()], LO
 const meta = (pubkey, isWritable = false, isSigner = false) => ({ pubkey, isWritable, isSigner });
 const u16 = (n) => { const b = Buffer.alloc(2); b.writeUInt16LE(n); return b; };
 const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
+const i64 = (n) => { const b = Buffer.alloc(8); b.writeBigInt64LE(BigInt(n)); return b; };
 const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 const send = (ixs, extra = []) => sendAndConfirmTransaction(conn, new Transaction().add(...ixs), [deployer, ...extra], { commitment: "confirmed" });
 
@@ -45,7 +45,7 @@ const record = (name, ok, detail = "") => {
 
 async function readConfig() {
   const d = (await conn.getAccountInfo(config)).data;
-  const o = 8 + 32 * 3 + 2 + 32 * 3;
+  const o = 8 + 32 * 3 + 2 + 32;
   return {
     mFired: !!d[o], pendingBudget: d.readBigUInt64LE(o + 3), events: d.readBigUInt64LE(o + 12),
     totalBurned: d.readBigUInt64LE(o + 20), totalSolSpent: d.readBigUInt64LE(o + 28),
@@ -97,7 +97,7 @@ async function main() {
   try {
     await send([new TransactionInstruction({
       programId: PROGRAM_ID,
-      data: Buffer.concat([disc("initialize"), devWallet.toBuffer(), u16(5000), new PublicKey(feeds.xray_m2).toBuffer(), new PublicKey(feeds.kp_quiet).toBuffer(), deployer.publicKey.toBuffer()]),
+      data: Buffer.concat([disc("initialize"), devWallet.toBuffer(), u16(5000), deployer.publicKey.toBuffer()]),
       keys: [meta(deployer.publicKey, true, true), meta(config, true), meta(PROGRAM_ID), meta(programData), meta(feeVault), meta(burnVault), meta(MINT), meta(SystemProgram.programId)],
     })]);
     record("initialize accepts a Token-2022 pump.fun mint", true);
@@ -140,8 +140,9 @@ async function main() {
 
   // ---- arm on an M2 flare ----
   await send([new TransactionInstruction({
-    programId: PROGRAM_ID, data: Buffer.concat([disc("arm"), Buffer.from([0])]),
-    keys: [meta(config, true), meta(burnVault), meta(new PublicKey(feeds.xray_m2)), meta(new PublicKey(feeds.kp_quiet)), meta(SYSVAR_SLOT_HASHES_PUBKEY)],
+    programId: PROGRAM_ID,
+    data: Buffer.concat([disc("arm"), Buffer.from([0]), u64(20_000), i64(Math.floor(Date.now() / 1000) - 60)]),
+    keys: [meta(deployer.publicKey, false, true), meta(config, true), meta(burnVault), meta(SYSVAR_SLOT_HASHES_PUBKEY)],
   })]);
   const armed = await readConfig();
   record("arm sets a budget", armed.pendingBudget > 0n, `${Number(armed.pendingBudget) / LAMPORTS_PER_SOL} SOL`);

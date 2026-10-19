@@ -8,7 +8,7 @@
 //
 // Covers: initialize (upgrade authority only, once), update_settings guards,
 // distribute (exact 50/50 split, empty vault, small-amount rent edge case),
-// arm guards with non-Switchboard feeds, and renounce (optional, RENOUNCE=1).
+// arm guards (keeper only, reading age, tier), and renounce (optional, RENOUNCE=1).
 // execute needs Jupiter, which is not on devnet, so it is not covered.
 
 const crypto = require("crypto");
@@ -25,7 +25,7 @@ const deployer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSyn
 const conn = new Connection(RPC_URL, "confirmed");
 const LOADER = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 const VAULT_FLOOR = 1_000_000;
-const ERR = { DevShareTooHigh: 6000, NotAdmin: 6001, NothingToDistribute: 6002, BadFeed: 6003, StaleFeed: 6004, BadTier: 6005 };
+const ERR = { DevShareTooHigh: 6000, NotAdmin: 6001, NothingToDistribute: 6002, StaleReading: 6003, BadTier: 6004, NotKeeper: 6013 };
 
 const disc = (name) => crypto.createHash("sha256").update(`global:${name}`).digest().subarray(0, 8);
 const pda = (seed) => PublicKey.findProgramAddressSync([Buffer.from(seed)], PROGRAM_ID)[0];
@@ -79,7 +79,7 @@ const transfer = (from, to, lamports) => send(SystemProgram.transfer({ fromPubke
 function initIx(admin, mint, args) {
   const data = Buffer.concat([
     disc("initialize"), args.devWallet.toBuffer(), u16(args.devBps),
-    args.xray.toBuffer(), args.kp.toBuffer(), args.keeper.toBuffer(),
+    args.keeper.toBuffer(),
   ]);
   return new TransactionInstruction({
     programId: PROGRAM_ID, data,
@@ -93,7 +93,7 @@ function initIx(admin, mint, args) {
 function updateIx(admin, args) {
   const data = Buffer.concat([
     disc("update_settings"), args.devWallet.toBuffer(), u16(args.devBps),
-    args.xray.toBuffer(), args.kp.toBuffer(), args.keeper.toBuffer(),
+    args.keeper.toBuffer(),
   ]);
   return new TransactionInstruction({ programId: PROGRAM_ID, data, keys: [meta(admin, false, true), meta(config, true)] });
 }
@@ -103,9 +103,11 @@ const distributeIx = (devWallet) => new TransactionInstruction({
   keys: [meta(config), meta(feeVault, true), meta(burnVault, true), meta(devWallet, true), meta(SystemProgram.programId)],
 });
 
-const armIx = (tier, xray, kp) => new TransactionInstruction({
-  programId: PROGRAM_ID, data: Buffer.concat([disc("arm"), Buffer.from([tier])]),
-  keys: [meta(config, true), meta(burnVault), meta(xray), meta(kp), meta(SYSVAR_SLOT_HASHES_PUBKEY)],
+const i64 = (n) => { const b = Buffer.alloc(8); b.writeBigInt64LE(BigInt(n)); return b; };
+const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
+const armIx = (keeper, tier, reading, observedAt) => new TransactionInstruction({
+  programId: PROGRAM_ID, data: Buffer.concat([disc("arm"), Buffer.from([tier]), u64(reading), i64(observedAt)]),
+  keys: [meta(keeper, false, true), meta(config, true), meta(burnVault), meta(SYSVAR_SLOT_HASHES_PUBKEY)],
 });
 
 const renounceIx = (admin) => new TransactionInstruction({
@@ -118,7 +120,7 @@ async function readConfig() {
   const pk = () => { const p = new PublicKey(d.subarray(o, o + 32)); o += 32; return p; };
   const c = { admin: pk(), keeper: pk(), devWallet: pk() };
   c.devBps = d.readUInt16LE(o); o += 2;
-  c.sfireMint = pk(); c.xrayFeed = pk(); c.kpFeed = pk();
+  c.sfireMint = pk();
   c.mFired = !!d[o++]; c.xFired = !!d[o++]; c.stormFired = !!d[o++];
   c.pendingBudget = d.readBigUInt64LE(o); o += 8;
   c.pendingTier = d[o++];
@@ -133,8 +135,6 @@ async function main() {
 
   const attacker = Keypair.generate();
   const devWallet = Keypair.generate().publicKey;
-  // Placeholder feeds: not Switchboard-owned, so arm must reject them.
-  const fakeXray = Keypair.generate().publicKey, fakeKp = Keypair.generate().publicKey;
   await transfer(deployer, attacker.publicKey, 0.05 * LAMPORTS_PER_SOL);
   // Dev wallet must exist before it can receive a small share (see rent edge case below).
   await transfer(deployer, devWallet, 0.002 * LAMPORTS_PER_SOL);
@@ -142,7 +142,7 @@ async function main() {
   const mint = await createMint(conn, deployer, deployer.publicKey, null, 6);
   console.log(`test $SFIRE mint ${mint.toBase58()}\n`);
 
-  const args = { devWallet, devBps: 5000, xray: fakeXray, kp: fakeKp, keeper: deployer.publicKey };
+  const args = { devWallet, devBps: 5000, keeper: deployer.publicKey };
 
   // ---- initialize ----
   if (await conn.getAccountInfo(config)) {
@@ -188,10 +188,12 @@ async function main() {
   await expectOk("update_settings back to the funded dev wallet", () => send(updateIx(deployer.publicKey, args), [deployer]));
   await expectOk("small distribute to funded dev wallet succeeds", () => send(distributeIx(devWallet), [deployer]));
 
-  // ---- arm guards (no real Switchboard feed) ----
-  await expectFail("arm with a non-Switchboard xray feed is rejected (BadFeed)", () => send(armIx(0, fakeXray, fakeKp), [deployer]), ERR.BadFeed);
-  await expectFail("arm with a feed other than the configured one is rejected", () => send(armIx(0, Keypair.generate().publicKey, fakeKp), [deployer]), ERR.BadFeed);
-  await expectFail("arm with tier 3 is rejected (BadTier)", () => send(armIx(3, fakeXray, fakeKp), [deployer]), ERR.BadTier);
+  // ---- arm guards (full arm flow is in local-arm.cjs) ----
+  const now = Math.floor(Date.now() / 1000);
+  await expectFail("arm by someone other than the keeper is rejected (NotKeeper)", () => send(armIx(attacker.publicKey, 1, 200_000, now), [attacker]), ERR.NotKeeper);
+  await expectFail("arm with a reading older than 6 h is rejected (StaleReading)", () => send(armIx(deployer.publicKey, 1, 200_000, now - 7 * 3600), [deployer]), ERR.StaleReading);
+  await expectFail("arm with a reading in the future is rejected (StaleReading)", () => send(armIx(deployer.publicKey, 1, 200_000, now + 3600), [deployer]), ERR.StaleReading);
+  await expectFail("arm with tier 3 is rejected (BadTier)", () => send(armIx(deployer.publicKey, 3, 200_000, now), [deployer]), ERR.BadTier);
 
   // ---- renounce ----
   if (process.env.RENOUNCE === "1") {
