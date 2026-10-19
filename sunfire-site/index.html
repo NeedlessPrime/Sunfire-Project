@@ -258,8 +258,8 @@ footer p { margin: 0; max-width: 70ch; }
   <!-- ================= VIEWER ================= -->
   <section class="viewer" id="top" aria-label="Live view of the Sun">
     <div class="stage">
-      <div class="disk" id="disk">
-        <video id="vid" muted playsinline loop autoplay preload="auto" aria-label="Last 48 hours of the Sun, NASA SDO"></video>
+      <div class="disk still" id="disk">
+        <video id="vid" muted playsinline loop autoplay preload="auto" aria-label="Replay of recent solar activity, NASA SDO"></video>
         <img id="still" alt="Latest image of the Sun from NASA SDO">
       </div>
     </div>
@@ -283,7 +283,7 @@ footer p { margin: 0; max-width: 70ch; }
       <div class="track" id="track" role="slider" tabindex="0" aria-label="Timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
         <div class="done" id="done"></div><div class="knob" id="knob"></div>
       </div>
-      <div class="tl-labels"><span>−48 h</span><span class="now" id="frame-time">–<span> UTC</span></span><span>now</span></div>
+      <div class="tl-labels"><span>Start</span><span class="now" id="frame-time">NASA replay<span> · time on image, UTC</span></span><span>End</span></div>
       <div class="btns">
         <button class="btn" data-rate="0.5" aria-pressed="false">0.5×</button>
         <button class="btn" data-rate="1" aria-pressed="true">1×</button>
@@ -294,7 +294,7 @@ footer p { margin: 0; max-width: 70ch; }
         <button class="play" id="play" aria-label="Pause"><svg viewBox="0 0 16 16" id="play-ico"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg></button>
         <button class="btn" id="fwd" aria-label="Step forward">›</button>
         <span class="sep" aria-hidden="true"></span>
-        <button class="btn" id="live" aria-pressed="false">Still 4K</button>
+        <button class="btn" id="live" aria-pressed="true">Live 4K</button>
       </div>
     </div>
 
@@ -430,9 +430,8 @@ const CHANNELS = [
   { id: "HMIB", name: "HMI Mag", c: "#9a9a9a", temp: "Magnetic", desc: "Magnetogram. Black and white show opposite magnetic polarities." },
   { id: "HMIIC", name: "HMI Visible", c: "#f0e6d0", temp: "5,800 K", desc: "Visible light. Sunspots as seen by eye." },
 ];
-const SPAN_H = 48; // SDO "latest" movies cover roughly the last 48 hours
 let chan = CHANNELS[0];
-let rate = 1, stillMode = false;
+let rate = 1, stillMode = true; // open on the latest real-time image; the replay is opt-in
 const vid = $("vid"), still = $("still"), disk = $("disk");
 
 function renderChans() {
@@ -491,13 +490,13 @@ function toggleStill(on) {
   stillMode = on;
   $("live").setAttribute("aria-pressed", String(on));
   disk.classList.toggle("still", on);
-  if (on) { vid.pause(); setFrameTime(1); } else loadMedia();
+  if (on) { vid.pause(); setFrameTime(1); } else { loadMedia(); setFrameTime(0); }
 }
 $("live").addEventListener("click", () => toggleStill(!stillMode));
 
 function setFrameTime(frac) {
-  const t = new Date(Date.now() - (1 - frac) * SPAN_H * 3600e3).toISOString();
-  $("frame-time").innerHTML = t.slice(8, 10) + "/" + t.slice(5, 7) + " " + t.slice(11, 16) + "<span> UTC (approx.)</span>";
+  // NASA publishes the replay with a variable delay, so the time is read from the image itself.
+  $("frame-time").innerHTML = stillMode ? "Latest image<span> · about 15 min behind</span>" : "NASA replay<span> · time on image, UTC</span>";
   $("done").style.width = frac * 100 + "%";
   $("knob").style.left = frac * 100 + "%";
   $("track").setAttribute("aria-valuenow", Math.round(frac * 100));
@@ -655,6 +654,8 @@ async function loadOdds() {
 function refresh() { loadXray(); loadFlares(); loadKp(); loadOdds(); }
 renderChans();
 setChan("0171");
+setFrameTime(1);
+syncPlay();
 refresh();
 setInterval(refresh, 60e3);
 setInterval(() => { if (stillMode) still.src = SDO + "latest_4096_" + chan.id + ".jpg?t=" + stamp(); }, 3 * 60e3);
