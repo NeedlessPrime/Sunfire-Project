@@ -137,15 +137,16 @@ p { margin: 0; }
   animation: breathe 9s ease-in-out infinite;
 }
 /* SDO frames have the disk in the middle and labels in the corners: crop to the disk. */
-.sun img {
+.sun img, .sun video {
   position: absolute; inset: -12%; width: 124%; height: 124%; max-width: none; object-fit: cover;
   opacity: 0; transition: opacity 1.6s ease;
   -webkit-mask-image: radial-gradient(circle, #000 58%, transparent 68%); mask-image: radial-gradient(circle, #000 58%, transparent 68%);
 }
-.sun img { mix-blend-mode: screen; }
-.sun img.ok { opacity: 1; }
+.sun img, .sun video { mix-blend-mode: screen; }
+.sun img.ok, .sun video.ok { opacity: 1; }
+.sun:has(video.ok) img { opacity: 0; }
 .sun-core { transition: opacity 1.6s ease; }
-.sun:has(img.ok) .sun-core { opacity: 0; }
+.sun:has(img.ok) .sun-core, .sun:has(video.ok) .sun-core { opacity: 0; }
 .sun-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 140, 40, .22), transparent 55%); animation: breathe 9s ease-in-out infinite reverse; }
 @keyframes breathe { 50% { transform: scale(1.025); } }
 .hero h1 {
@@ -468,6 +469,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
           <div class="sun-glow"></div>
           <div class="sun-core"></div>
           <img data-src="https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_0304.jpg" alt="">
+          <video id="hero-vid" muted playsinline loop preload="auto"></video>
         </div>
         <h1 class="split" data-reveal-split style="--d:.2s"><span class="l">Ruled</span><span class="r">by the Sun.</span></h1>
         <p class="hero-poem" data-reveal style="--d:1.1s">Not by a team. Not by a vote. By light.</p>
@@ -476,7 +478,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
       <div class="hero-foot">
         <p class="label hide-s" data-reveal style="--d:1.2s"><b>01</b> &nbsp;SunFire · $SFIRE<br>Fair launch on Pump.fun</p>
         <a class="cue label" href="#live" data-reveal style="--d:1.3s">Scroll<i aria-hidden="true"></i></a>
-        <p class="label" data-reveal style="--d:1.4s">The Sun right now<br><b>NASA SDO · AIA 304</b></p>
+        <p class="label" data-reveal style="--d:1.4s">The Sun, last hours<br><b>NASA SDO · AIA 304</b></p>
       </div>
     </div>
   </section>
@@ -773,6 +775,17 @@ if ("IntersectionObserver" in window && !reduce) {
 } else revealables.forEach(show);
 requestAnimationFrame(() => document.querySelector(".hero").classList.add("in"));
 
+// The hero Sun plays NASA's latest AIA 304 movie, starting on its most recent
+// hours. The still image stays underneath if the movie cannot play.
+if (!reduce) {
+  const hv = $("hero-vid");
+  hv.addEventListener("loadedmetadata", () => { if (hv.duration) hv.currentTime = hv.duration * 0.9; });
+  hv.addEventListener("playing", () => hv.classList.add("ok"));
+  hv.addEventListener("error", () => hv.remove());
+  hv.src = SDO + "mpeg/latest_1024_0304.mp4?t=" + Math.floor(Date.now() / 3600e3);
+  hv.play().catch(() => {});
+}
+
 // Parallax on elements marked data-parallax, only while on screen.
 const para = [...document.querySelectorAll("[data-parallax]")];
 let ticking = false;
@@ -842,6 +855,7 @@ const CHANNELS = [
 ];
 let chan = CHANNELS[0];
 let rate = 1, stillMode = false; // open on the NASA replay; "Live 4K" shows the latest still image
+let freshVideo = false; // set when a new replay is loading
 let viewerStarted = false; // the 4K image is heavy, so it loads when the viewer comes near the screen
 const vid = $("vid"), still = $("still"), disk = $("disk");
 
@@ -869,6 +883,7 @@ function loadMedia() {
   hi.src = SDO + "latest_4096_" + want + ".jpg?t=" + stamp();
   if (!stillMode) {
     vid.src = SDO + "mpeg/latest_1024_" + want + ".mp4?t=" + Math.floor(Date.now() / 3600e3);
+    freshVideo = true;
     vid.playbackRate = rate;
     vid.play().catch(() => {});
   }
@@ -879,7 +894,12 @@ if ("IntersectionObserver" in window) {
 } else viewerStarted = true;
 // If the movie can't load, show the still image instead.
 vid.addEventListener("error", () => disk.classList.add("still"));
-vid.addEventListener("loadeddata", () => { vid.playbackRate = rate; if (!stillMode) disk.classList.remove("still"); });
+// A new replay starts on its last tenth, the most recent hours, then loops.
+vid.addEventListener("loadeddata", () => {
+  vid.playbackRate = rate;
+  if (freshVideo && vid.duration) { vid.currentTime = vid.duration * 0.9; freshVideo = false; }
+  if (!stillMode) disk.classList.remove("still");
+});
 
 document.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => {
   rate = Number(b.dataset.rate);
