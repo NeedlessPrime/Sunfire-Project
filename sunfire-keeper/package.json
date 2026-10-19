@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "wallet": "node scripts/new-wallet.js"
   },
   "dependencies": {
     "@solana/web3.js": "1.98.4",
