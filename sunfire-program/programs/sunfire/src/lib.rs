@@ -1,13 +1,15 @@
 //! SunFire: trading fees are split between the developer and a burn vault.
 //! When NOAA's GOES satellites record an M- or X-class solar flare, or Kp
-//! reaches storm level (G4+), anyone can spend a random share of the burn
-//! vault to buy $SFIRE through Jupiter and burn it.
+//! reaches storm level (G4+), a share of the burn vault is spent to buy
+//! $SFIRE through Jupiter and burn it.
 //!
 //! Flow per event:
-//!   1. `arm`     – reads the Switchboard feed, checks the event is new, draws
-//!                  the random share and records the exact budget.
-//!   2. `execute` – swaps exactly that budget through Jupiter (route built by
-//!                  the caller for the burn vault) and burns every token bought.
+//!   1. `arm`     – anyone. Reads the Switchboard feed, checks the event is
+//!                  new, draws the share and records the exact budget.
+//!   2. `execute` – the keeper only. Swaps exactly that budget through
+//!                  Jupiter and burns every token bought. Restricted because
+//!                  the caller picks `min_out`: an open call would let anyone
+//!                  sandwich their own swap and drain the vault.
 //!
 //! Splitting it in two lets the caller build a Jupiter route for an amount
 //! that was decided on-chain, which a single instruction cannot do.
@@ -46,10 +48,12 @@ pub mod sunfire {
         dev_bps: u16,
         xray_feed: Pubkey,
         kp_feed: Pubkey,
+        keeper: Pubkey,
     ) -> Result<()> {
         require!(dev_bps <= math::MAX_DEV_BPS, SunfireError::DevShareTooHigh);
         let c = &mut ctx.accounts.config;
         c.admin = ctx.accounts.admin.key();
+        c.keeper = keeper;
         c.dev_wallet = dev_wallet;
         c.dev_bps = dev_bps;
         c.sfire_mint = ctx.accounts.sfire_mint.key();
@@ -68,14 +72,16 @@ pub mod sunfire {
         dev_bps: u16,
         xray_feed: Pubkey,
         kp_feed: Pubkey,
+        keeper: Pubkey,
     ) -> Result<()> {
         require!(dev_bps <= math::MAX_DEV_BPS, SunfireError::DevShareTooHigh);
         let c = &mut ctx.accounts.config;
+        c.keeper = keeper;
         c.dev_wallet = dev_wallet;
         c.dev_bps = dev_bps;
         c.xray_feed = xray_feed;
         c.kp_feed = kp_feed;
-        emit!(SettingsUpdated { dev_wallet, dev_bps, xray_feed, kp_feed });
+        emit!(SettingsUpdated { dev_wallet, dev_bps, xray_feed, kp_feed, keeper });
         Ok(())
     }
 
@@ -162,7 +168,7 @@ pub mod sunfire {
         Ok(())
     }
 
-    /// Permissionless. Step 2: swaps the armed budget through Jupiter and
+    /// Keeper only. Step 2: swaps the armed budget through Jupiter and
     /// burns every $SFIRE received. `jupiter_data` is the swap instruction
     /// data from Jupiter's API, built with the burn vault as the user and
     /// the armed budget as the input amount. Route accounts go in
@@ -298,6 +304,8 @@ fn tier_from_u8(t: u8) -> Result<Tier> {
 pub struct Config {
     /// Pubkey::default() once renounced.
     pub admin: Pubkey,
+    /// The only signer allowed to run `execute`.
+    pub keeper: Pubkey,
     pub dev_wallet: Pubkey,
     pub dev_bps: u16,
     pub sfire_mint: Pubkey,
@@ -337,6 +345,12 @@ pub struct Initialize<'info> {
     pub admin: Signer<'info>,
     #[account(init, payer = admin, space = 8 + Config::INIT_SPACE, seeds = [CONFIG_SEED], bump)]
     pub config: Account<'info, Config>,
+    /// Only the program's upgrade authority can initialize, so nobody can
+    /// front-run the deployment and set their own dev wallet.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key()) @ SunfireError::NotAdmin)]
+    pub program: Program<'info, crate::program::Sunfire>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(admin.key()) @ SunfireError::NotAdmin)]
+    pub program_data: Account<'info, ProgramData>,
     /// CHECK: system-owned PDA that receives trading fees.
     #[account(seeds = [FEE_VAULT_SEED], bump)]
     pub fee_vault: UncheckedAccount<'info>,
@@ -399,7 +413,10 @@ pub struct Arm<'info> {
 #[derive(Accounts)]
 pub struct Execute<'info> {
     pub executor: Signer<'info>,
-    #[account(mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = sfire_mint)]
+    #[account(
+        mut, seeds = [CONFIG_SEED], bump = config.bump, has_one = sfire_mint,
+        constraint = config.keeper == executor.key() @ SunfireError::NotKeeper
+    )]
     pub config: Account<'info, Config>,
     #[account(mut, seeds = [BURN_VAULT_SEED], bump = config.burn_vault_bump)]
     pub burn_vault: SystemAccount<'info>,
@@ -424,6 +441,7 @@ pub struct Execute<'info> {
 
 #[event]
 pub struct SettingsUpdated {
+    pub keeper: Pubkey,
     pub dev_wallet: Pubkey,
     pub dev_bps: u16,
     pub xray_feed: Pubkey,
@@ -481,4 +499,6 @@ pub enum SunfireError {
     VaultTouched,
     #[msg("Wrong sysvar account")]
     BadSysvar,
+    #[msg("Only the keeper can execute a burn")]
+    NotKeeper,
 }

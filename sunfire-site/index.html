@@ -309,7 +309,7 @@ footer p { margin: 0; max-width: 70ch; }
       <section class="block" id="protocol">
         <div><span class="kicker">SunFire · $SFIRE</span><h2>A token governed by the Sun</h2></div>
         <div>
-          <p class="lead">SunFire is a Solana token whose supply is governed by the Sun. Solar flares and geomagnetic storms recorded by NOAA's GOES satellites trigger buybacks and burns on-chain, executed by a public program that no one, including the team, can override.</p>
+          <p class="lead">SunFire is a Solana token whose supply is governed by the Sun. Solar flares and geomagnetic storms recorded by NOAA's GOES satellites trigger buybacks and burns on-chain, run by a public program on Solana.</p>
           <div class="facts">
             <div><small>Network</small><strong>Solana</strong></div>
             <div><small>Data source</small><strong>NOAA GOES-18</strong></div>
@@ -324,8 +324,8 @@ footer p { margin: 0; max-width: 70ch; }
         <ol class="flow">
           <li><div><b>The Sun erupts</b><span>GOES satellites measure solar X-ray flux every minute. NOAA classifies each flare from A to X on a logarithmic scale.</span></div></li>
           <li><div><b>The oracle confirms</b><span>Switchboard publishes the NOAA reading on Solana. The SunFire program reads it directly and rejects any event it has already processed.</span></div></li>
-          <li><div><b>Anyone triggers</b><span>Any wallet can call the program once the data qualifies. There is no team server and no manual switch.</span></div></li>
-          <li><div><b>Buyback and burn</b><span>The program draws a verifiable random share of the burn vault, buys $SFIRE on the market and burns it.</span></div></li>
+          <li><div><b>Anyone confirms</b><span>Any wallet can confirm a qualifying event on-chain. The program checks the oracle, refuses duplicates and fixes the size of the burn.</span></div></li>
+          <li><div><b>Buyback and burn</b><span>The SunFire keeper spends exactly that amount from the burn vault to buy $SFIRE through Jupiter, then the program burns every token bought.</span></div></li>
         </ol>
       </section>
 
@@ -342,7 +342,7 @@ footer p { margin: 0; max-width: 70ch; }
               </tbody>
             </table>
           </div>
-          <p class="note" style="margin:14px 0 0">Each amount is drawn at random within its range using Switchboard verifiable randomness, so the size of the next burn cannot be known in advance.</p>
+          <p class="note" style="margin:14px 0 0">Each amount is drawn within its range from recent on-chain data at the moment the event is confirmed.</p>
         </div>
       </section>
 
@@ -373,21 +373,21 @@ footer p { margin: 0; max-width: 70ch; }
             <h3>Flare log <span>GOES · last 7 days</span></h3>
             <div class="table-wrap">
               <table class="log">
-                <thead><tr><th>Class</th><th>Peak UTC</th><th>Start</th><th>End</th><th>Program</th></tr></thead>
+                <thead><tr><th>Class</th><th>Peak UTC</th><th>Start</th><th>End</th><th>Tier</th></tr></thead>
                 <tbody id="flares"><tr><td colspan="5" class="empty">Loading flares…</td></tr></tbody>
               </table>
             </div>
+            <p class="note" style="margin:12px 0 0">The program reads the highest X-ray flux of the last 6 hours, so flares less than 6 hours apart count as one burn event.</p>
           </div>
         </div>
       </section>
 
       <section class="block" id="trust">
-        <div><span class="kicker">Trust model</span><h2>Built so no one can cheat</h2></div>
+        <div><span class="kicker">Trust model</span><h2>What the program enforces</h2></div>
         <div class="grid2">
-          <div class="card" style="grid-column:1/-1"><h3>Transparent fee split</h3><p>Trading fees are split on-chain: 50 % to the burn vault owned by the program, 50 % to the development wallet that funds the project. The burn share can only leave the vault through a buyback and burn.</p></div>
-          <div class="card"><h3>Fair launch</h3><p>No team allocation and no presale. Every token in circulation was bought on the open market, so there is no hidden supply waiting to be sold.</p></div>
-          <div class="card"><h3>Public, permissionless trigger</h3><p>Anyone can execute a qualifying event. If the team disappeared tomorrow, the Sun would keep burning.</p></div>
-          <div class="card"><h3>Holders are never touched</h3><p>Burns only destroy tokens the program has bought back with the burn vault. Tokens in holders' wallets are never affected.</p></div>
+          <div class="card" style="grid-column:1/-1"><h3>Transparent fee split</h3><p>Trading fees are split on-chain: 50 % to the burn vault owned by the program, 50 % to the development wallet. The burn share can only leave the vault through a buyback and burn. Tokens in holders' wallets are never touched.</p></div>
+          <div class="card"><h3>Fair launch</h3><p>SunFire launches with no team allocation and no presale, so there is no hidden supply waiting to be sold.</p></div>
+          <div class="card"><h3>One event, one burn</h3><p>Anyone can confirm a qualifying event, and the program refuses duplicates. The keeper that executes buybacks can only spend the exact amount the program fixed.</p></div>
         </div>
       </section>
 
@@ -396,7 +396,8 @@ footer p { margin: 0; max-width: 70ch; }
         <ul class="limits">
           <li>Solar Cycle 25 peaked around 2024–2025. X-class flares will become less frequent in the coming years. M-class flares remain common.</li>
           <li>The program relies on the Switchboard oracle to relay NOAA data faithfully.</li>
-          <li>NOAA occasionally publishes a flare before its final class. Such events are processed only once the class is confirmed.</li>
+          <li>Events are detected from the GOES X-ray flux itself, not from NOAA's final flare classification.</li>
+          <li>Burn amounts are derived from recent on-chain data, not yet from verifiable randomness.</li>
           <li>SunFire is an experimental token. Nothing on this site is financial advice.</li>
         </ul>
       </section>
@@ -616,7 +617,7 @@ async function loadFlares() {
     $("flares").innerHTML = rows.length ? rows.map((r) => {
       const cls = r.max_class || "Pending";
       const L = r.max_class ? cls[0] : "";
-      const trig = L === "X" ? "Burn 10–25 %" : L === "M" ? "Burn 1–5 %" : "";
+      const trig = L === "X" ? "X tier" : L === "M" ? "M tier" : "";
       return `<tr><td><span class="cls ${L}">${cls}</span></td><td>${fmt(r.max_time)}</td><td>${fmt(r.begin_time)}</td><td>${fmt(r.end_time)}</td><td class="trig">${trig}</td></tr>`;
     }).join("") : `<tr><td colspan="5" class="empty">No flares in the last 7 days.</td></tr>`;
   } catch (e) {

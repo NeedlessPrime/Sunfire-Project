@@ -8,12 +8,12 @@ Programme Anchor qui partage les fees de $SFIRE entre le wallet dev et un coffre
 
 | Instruction | Qui peut l'appeler | Ce qu'elle fait |
 |---|---|---|
-| `initialize` | toi, une fois | Crée la config : wallet dev, part dev (max 50 %), feeds Switchboard, mint $SFIRE |
+| `initialize` | l'autorité de mise à jour du programme, une fois | Crée la config : wallet dev, part dev (max 50 %), feeds Switchboard, keeper, mint $SFIRE. Personne d'autre ne peut l'appeler, donc personne ne peut te devancer après le déploiement |
 | `distribute` | tout le monde | Vide le coffre des fees : `dev_bps` vers ton wallet, le reste vers le coffre de burn |
 | `arm(tier)` | tout le monde | Lit l'oracle, vérifie que l'événement est réel et nouveau, tire la part au hasard et fixe le budget |
-| `execute` | tout le monde | Achète du $SFIRE via Jupiter avec exactement ce budget, puis brûle tout ce qui a été acheté |
+| `execute` | le keeper uniquement | Achète du $SFIRE via Jupiter avec exactement ce budget, puis brûle tout ce qui a été acheté |
 | `sync` | tout le monde | Réarme les déclencheurs quand le Soleil redevient calme |
-| `update_settings` | toi, jusqu'au renoncement | Change le wallet dev, la part dev ou les feeds |
+| `update_settings` | toi, jusqu'au renoncement | Change le wallet dev, la part dev, le keeper ou les feeds |
 | `renounce` | toi, une fois | Supprime l'admin pour toujours. Plus rien ne peut être modifié |
 
 **Paliers** (`programs/sunfire/src/math.rs`) :
@@ -26,7 +26,9 @@ Programme Anchor qui partage les fees de $SFIRE entre le wallet dev et un coffre
 
 **Anti-doublon :** une même éruption déclenche le palier M une fois et le palier X une fois. Une M qui devient X déclenche donc les deux. Tout se réarme quand le flux repasse sous M, ou sous Kp 8 pour les tempêtes.
 
-**Pourquoi deux étapes (`arm` puis `execute`) :** le montant est tiré au hasard sur la blockchain. Celui qui lance le burn doit le connaître pour demander une route à Jupiter. Il lit donc `pending_budget` après `arm`, puis appelle `execute` avec la route.
+**Pourquoi deux étapes (`arm` puis `execute`) :** le montant est fixé sur la blockchain au moment de `arm`. Le keeper doit le connaître pour demander une route à Jupiter. Il lit donc `pending_budget` après `arm`, puis appelle `execute` avec la route.
+
+**Pourquoi `execute` est réservé au keeper :** c'est l'appelant qui choisit `min_out`. Si n'importe qui pouvait appeler `execute`, quelqu'un pourrait mettre 0 et se sandwicher lui-même pour siphonner le coffre. Le keeper (le bot GitHub Action) calcule `min_out` à partir du devis Jupiter avec une marge de slippage.
 
 **Garde-fous dans `execute` :** le swap ne peut pas dépenser plus que le budget fixé. Il doit rapporter au moins `min_out` tokens. Il ne doit pas toucher aux SOL restants du coffre. Le seul programme appelé est Jupiter v6.
 
@@ -57,6 +59,6 @@ anchor deploy --provider.cluster devnet
 ## Avant le mainnet
 
 1. **Tester sur devnet** de bout en bout : distribute, puis arm, puis execute avec une vraie route Jupiter.
-2. **Protection contre le sandwich :** `min_out` est choisi par celui qui lance le burn. Une personne malveillante pourrait mettre 0 et se sandwicher elle-même pour gagner sur le budget du coffre. Avant le mainnet, il faut ajouter un contrôle de prix (feed de prix $SFIRE/SOL ou TWAP) qui impose un minimum.
+2. **Keeper :** écrire le bot qui appelle `execute` avec un `min_out` tiré du devis Jupiter. Si sa clé fuitait, l'attaquant pourrait encore sandwicher les burns : pour l'éviter complètement, ajouter plus tard un contrôle de prix on-chain (feed $SFIRE/SOL).
 3. **Hasard :** la v1 utilise le dernier hash de slot. Celui qui appelle `arm` peut choisir son moment pour viser un montant plus haut ou plus bas dans la fourchette. Pour un hasard vraiment imprévisible, il faut passer à Switchboard Randomness.
 4. **Audit** du programme par un tiers.
