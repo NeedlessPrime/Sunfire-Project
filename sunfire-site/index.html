@@ -843,7 +843,7 @@ const CHANNELS = [
 let chan = CHANNELS[0];
 let rate = 1, stillMode = false; // open on the NASA replay; "Live 4K" shows the latest still image
 let freshVideo = false; // set when a new replay is loading
-let viewerStarted = false; // the 4K image is heavy, so it loads when the viewer comes near the screen
+let viewerNear = false; // the 4K image is heavy, so it loads when the viewer comes near the screen
 const vid = $("vid"), still = $("still"), disk = $("disk");
 
 function renderChans() {
@@ -861,13 +861,12 @@ function setChan(id) {
   $("i-desc").textContent = chan.desc;
   loadMedia();
 }
+// The replay loads with the page so it is already playing when the viewer
+// scrolls into view.
 function loadMedia() {
-  if (!viewerStarted) return;
   const want = chan.id;
   still.src = SDO + "latest_1024_" + want + ".jpg?t=" + stamp();
-  const hi = new Image();
-  hi.onload = () => { if (chan.id === want) still.src = hi.src; };
-  hi.src = SDO + "latest_4096_" + want + ".jpg?t=" + stamp();
+  if (viewerNear) loadHiRes();
   if (!stillMode) {
     vid.src = SDO + "mpeg/latest_1024_" + want + ".mp4?t=" + Math.floor(Date.now() / 3600e3);
     freshVideo = true;
@@ -875,10 +874,16 @@ function loadMedia() {
     vid.play().catch(() => {});
   }
 }
+function loadHiRes() {
+  const want = chan.id;
+  const hi = new Image();
+  hi.onload = () => { if (chan.id === want) still.src = hi.src; };
+  hi.src = SDO + "latest_4096_" + want + ".jpg?t=" + stamp();
+}
 if ("IntersectionObserver" in window) {
-  const vo = new IntersectionObserver(([e]) => { if (e.isIntersecting) { viewerStarted = true; loadMedia(); vo.disconnect(); } }, { rootMargin: "500px 0px" });
+  const vo = new IntersectionObserver(([e]) => { if (e.isIntersecting) { viewerNear = true; loadHiRes(); vo.disconnect(); } }, { rootMargin: "500px 0px" });
   vo.observe(disk);
-} else viewerStarted = true;
+} else viewerNear = true;
 // If the movie can't load, show the still image instead.
 vid.addEventListener("error", () => disk.classList.add("still"));
 // A new replay starts on its last tenth, the most recent hours, then loops.
@@ -911,7 +916,7 @@ $("fwd").addEventListener("click", () => step(0.5));
 
 function toggleStill(on) {
   stillMode = on;
-  viewerStarted = true;
+  if (!viewerNear) { viewerNear = true; loadHiRes(); }
   $("live-btn").setAttribute("aria-pressed", String(on));
   disk.classList.toggle("still", on);
   if (on) { vid.pause(); setFrameTime(1); } else { loadMedia(); setFrameTime(0); }
@@ -1002,7 +1007,7 @@ setFrameTime(0);
 syncPlay();
 refresh();
 setInterval(refresh, 60e3);
-setInterval(() => { if (stillMode && viewerStarted) still.src = SDO + "latest_4096_" + chan.id + ".jpg?t=" + stamp(); }, 3 * 60e3);
+setInterval(() => { if (stillMode && viewerNear) still.src = SDO + "latest_4096_" + chan.id + ".jpg?t=" + stamp(); }, 3 * 60e3);
 </script>
 </body>
 </html>
