@@ -483,8 +483,8 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
 
   <div class="ticker" aria-hidden="true">
     <div class="ticker-track">
-      <span>M-class flare <em>1–5 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn vault</em></span><span>Code <em>100 % public</em></span>
-      <span>M-class flare <em>1–5 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn vault</em></span><span>Code <em>100 % public</em></span>
+      <span>M-class flare <em>1–5 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn wallet</em></span><span>Code <em>100 % public</em></span>
+      <span>M-class flare <em>1–5 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn wallet</em></span><span>Code <em>100 % public</em></span>
     </div>
   </div>
 
@@ -605,7 +605,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
           <div class="tile-top"><span class="tag m">Tier 1</span><span class="label">Live · AIA 131</span></div>
           <div>
             <h3>M-class.</h3>
-            <p class="pct"><span data-count="1">1</span>–<span data-count="5">5</span> %<small>of the burn vault</small></p>
+            <p class="pct"><span data-count="1">1</span>–<span data-count="5">5</span> %<small>of the burn wallet</small></p>
             <div class="meta"><span>≥ 10⁻⁵ W/m²</span><span>Several a month when active</span></div>
           </div>
         </article>
@@ -615,7 +615,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
           <div class="tile-top"><span class="tag x">Tier 2</span><span class="label">SDO · 31 Aug 2012</span></div>
           <div>
             <h3>X-class.</h3>
-            <p class="pct"><span data-count="10">10</span>–<span data-count="25">25</span> %<small>of the burn vault</small></p>
+            <p class="pct"><span data-count="10">10</span>–<span data-count="25">25</span> %<small>of the burn wallet</small></p>
             <div class="meta"><span>≥ 10⁻⁴ W/m²</span><span>The big ones</span></div>
           </div>
         </article>
@@ -625,7 +625,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
           <div class="tile-top"><span class="tag g">Tier 3</span><span class="label">ISS · Aug 2024</span></div>
           <div>
             <h3>Storm.</h3>
-            <p class="pct"><span data-count="30">30</span>–<span data-count="50">50</span> %<small>of the burn vault</small></p>
+            <p class="pct"><span data-count="30">30</span>–<span data-count="50">50</span> %<small>of the burn wallet</small></p>
             <div class="meta"><span>Kp ≥ 8 · G4–G5</span><span>Rare</span></div>
           </div>
         </article>
@@ -634,14 +634,14 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
           <span class="big"><span data-count="50">50</span>%</span>
           <div class="t-fee-text">
             <span class="label">The fuel</span>
-            <p>Half of every trading fee goes to the burn vault. The Sun decides when it gets spent.</p>
+            <p>Pump.fun's fee sharing pays half of the creator fees straight to the public burn wallet. The Sun decides when it gets spent.</p>
           </div>
         </article>
 
         <article class="tile t-once" data-reveal style="--d:.1s">
-          <span class="label"><b>Rule</b> · enforced on-chain</span>
+          <span class="label"><b>Rule</b> · public on Solana</span>
           <strong>One event, one burn.</strong>
-          <p>Every event is recorded on Solana and duplicates are refused. A flare that grows from M to X counts once for each tier.</p>
+          <p>Every buyback is tagged on Solana with the NOAA event it answers, and an event is never bought twice. A flare that grows from M to X counts once for each tier.</p>
         </article>
       </div>
     </div>
@@ -656,7 +656,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
       <div class="code-main">
         <p class="label" data-reveal><b>03</b> &nbsp;Open code</p>
         <h2 class="split" data-reveal-split>Don't trust us. <em>Read it.</em></h2>
-        <p class="lede" data-reveal style="--d:.15s">Everything is public. The Solana program, the SunFire bot and this website live in one open repository, so you can check every rule yourself, line by line.</p>
+        <p class="lede" data-reveal style="--d:.15s">Everything is public. The SunFire bot and this website live in one open repository, so you can check every rule yourself, line by line, and every buy and burn is visible on Solana.</p>
         <div class="cta" data-reveal style="--d:.25s">
           <a class="btn-big primary" href="https://github.com/NeedlessPrime/Sunfire-Project" target="_blank" rel="noopener">
             <svg viewBox="0 0 16 16" aria-hidden="true"><use href="#gh-icon"/></svg>
@@ -667,12 +667,12 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
       </div>
 
       <aside class="checks frame" data-reveal style="--d:.2s">
-        <div class="head"><span class="label"><b>What the code enforces</b></span><span class="dot" aria-hidden="true"></span></div>
+        <div class="head"><span class="label"><b>What the bot does</b></span><span class="dot" aria-hidden="true"></span></div>
         <ul>
-          <li><span><b>Exact budget</b>A buyback can never spend more than the amount the program fixed for that event.</span></li>
-          <li><span><b>Everything bought is burned</b>Every $SFIRE the vault buys is burned in the same transaction.</span></li>
-          <li><span><b>No duplicates</b>An event that was already processed is refused.</span></li>
-          <li><span><b>One swap route</b>The burn vault can only trade through Jupiter.</span></li>
+          <li><span><b>Fixed shares</b>Each event spends a random share of the burn wallet within its tier's range, never more.</span></li>
+          <li><span><b>Everything bought is burned</b>Every $SFIRE the bot buys through Jupiter is burned right after, with a public memo.</span></li>
+          <li><span><b>No duplicates</b>Each buyback names its NOAA event, and an event already bought is skipped.</span></li>
+          <li><span><b>Public wallet</b>Every buy and burn of the burn wallet can be checked on a Solana explorer.</span></li>
           <li><span><b>Holders untouched</b>Tokens in your wallet are never touched.</span></li>
         </ul>
       </aside>
@@ -685,9 +685,9 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
       <h3 data-reveal>Good to know.</h3>
       <ol data-reveal style="--d:.1s">
         <li><span>Solar Cycle 25 peaked around 2024–2025. X-class flares will get rarer in the coming years, while M-class flares stay common.</span></li>
-        <li><span>NOAA readings are published on-chain by the SunFire bot. They can be checked against NOAA, but the program relies on the bot to report them faithfully.</span></li>
-        <li><span>Events are detected from the GOES X-ray flux itself. Flares less than 6 hours apart count as one event.</span></li>
-        <li><span>Burn sizes are drawn from recent on-chain data, not yet from verifiable randomness.</span></li>
+        <li><span>Burns are run by the SunFire bot from a public wallet. Its code is open and every action is on Solana, but no smart contract stops that wallet from being used otherwise: holders trust the team on that.</span></li>
+        <li><span>Events come from NOAA's official flare list and planetary Kp index. Each flare is identified by its NOAA start time.</span></li>
+        <li><span>Burn sizes are drawn from a recent Solana block hash, not from verifiable randomness.</span></li>
         <li><span>SunFire is an experimental token. Nothing on this site is financial advice.</span></li>
       </ol>
     </div>
