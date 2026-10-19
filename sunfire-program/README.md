@@ -2,7 +2,7 @@
 
 Programme Anchor qui partage les fees de $SFIRE entre le wallet dev et un coffre de burn. Il dépense ensuite une part aléatoire de ce coffre pour racheter du $SFIRE et le brûler, à chaque éruption M ou X et à chaque tempête G4 ou plus.
 
-**État :** testé sur devnet, sur validateur local et sur une copie locale du mainnet (vrais programmes Jupiter, pump.fun et PumpSwap, vrais tokens pump.fun) : `arm`, achat via Jupiter puis burn fonctionnent, avant et après graduation. Il **n'est pas audité**, et n'a jamais acheté avec de l'argent réel. Voir « Avant le mainnet » plus bas.
+**État :** testé sur devnet, sur validateur local et sur une copie locale du mainnet (vrais programmes Jupiter, pump.fun et PumpSwap, vrais tokens pump.fun) : `arm`, achat via Jupiter puis burn fonctionnent, avant et après graduation. Il n'a jamais acheté avec de l'argent réel. Voir « Avant le mainnet » plus bas.
 
 ## Comment ça marche
 
@@ -75,5 +75,4 @@ anchor deploy --provider.cluster devnet
 1. **Premier burn réel** avec un petit montant (environ 0,01 SOL) juste après le déploiement, avant d'annoncer le token.
 2. **Keeper :** si sa clé fuitait, l'attaquant pourrait déclencher des burns au mauvais moment ou sandwicher un achat. Il ne peut pas sortir de SOL du coffre autrement que par un achat suivi d'un burn.
 3. **Hasard :** la v1 utilise le dernier hash de slot. Le keeper peut choisir son moment pour viser un montant plus haut ou plus bas dans la fourchette.
-4. **Audit** du programme par un tiers.
-5. Choix actuel : l'admin et l'autorité de mise à jour sont **conservés** pour pouvoir corriger un problème. Si un jour tu veux rendre le programme intouchable : `renounce`, puis `solana program set-upgrade-authority <PROGRAM_ID> --final`.
+4. Choix actuel : l'admin et l'autorité de mise à jour sont **conservés** pour pouvoir corriger un problème. Si un jour tu veux rendre le programme intouchable : `renounce`, puis `solana program set-upgrade-authority <PROGRAM_ID> --final`.
