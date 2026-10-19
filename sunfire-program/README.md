@@ -31,7 +31,7 @@ Programme Anchor qui partage les fees de $SFIRE entre le wallet dev et un coffre
 
 **Pourquoi `execute` est réservé au keeper :** c'est l'appelant qui choisit `min_out`. Si n'importe qui pouvait appeler `execute`, quelqu'un pourrait mettre 0 et se sandwicher lui-même pour siphonner le coffre. Le keeper (le bot GitHub Action) calcule `min_out` à partir du devis Jupiter avec une marge de slippage.
 
-**Garde-fous dans `execute` :** le swap ne peut pas dépenser plus que le budget fixé. Il doit rapporter au moins `min_out` tokens. Il ne doit pas toucher aux SOL restants du coffre. Le seul programme appelé est Jupiter v6.
+**Garde-fous dans `execute` :** le swap ne peut pas dépenser plus que le budget fixé, en comptant ensemble le wSOL (PumpSwap) et les SOL natifs (courbe pump.fun). Il doit rapporter au moins `min_out` tokens. Le seul programme appelé est Jupiter v6.
 
 ## Les fees
 

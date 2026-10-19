@@ -19,7 +19,8 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{instruction::Instruction, program::invoke_signed, sysvar};
 use anchor_lang::system_program;
-use anchor_spl::token::{self, Burn, Mint, SyncNative, Token, TokenAccount};
+use anchor_spl::token::{self, Mint, SyncNative, Token, TokenAccount};
+use anchor_spl::token_interface::{self, Burn, Mint as SfireMint, TokenAccount as SfireAccount, TokenInterface};
 use switchboard_on_demand::on_demand::accounts::pull_feed::PullFeedAccountData;
 
 pub mod math;
@@ -199,23 +200,27 @@ pub mod sunfire {
         let vault_bump = ctx.accounts.config.burn_vault_bump;
         let vault_seeds: &[&[u8]] = &[BURN_VAULT_SEED, &[vault_bump]];
 
-        // Wrap the budget into the vault's wSOL account.
-        system_program::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: ctx.accounts.burn_vault.to_account_info(),
-                    to: ctx.accounts.vault_wsol.to_account_info(),
-                },
-                &[vault_seeds],
-            ),
-            budget,
-        )?;
-        token::sync_native(CpiContext::new(
-            ctx.accounts.token_program.to_account_info(),
-            SyncNative { account: ctx.accounts.vault_wsol.to_account_info() },
-        ))?;
-        ctx.accounts.vault_wsol.reload()?;
+        // Top the vault's wSOL account up to the budget. wSOL left over from
+        // a bonding-curve buy (paid in native SOL) is reused here.
+        let wrap = budget.saturating_sub(ctx.accounts.vault_wsol.amount);
+        if wrap > 0 {
+            system_program::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.system_program.to_account_info(),
+                    system_program::Transfer {
+                        from: ctx.accounts.burn_vault.to_account_info(),
+                        to: ctx.accounts.vault_wsol.to_account_info(),
+                    },
+                    &[vault_seeds],
+                ),
+                wrap,
+            )?;
+            token::sync_native(CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                SyncNative { account: ctx.accounts.vault_wsol.to_account_info() },
+            ))?;
+            ctx.accounts.vault_wsol.reload()?;
+        }
 
         let wsol_before = ctx.accounts.vault_wsol.amount;
         let sfire_before = ctx.accounts.vault_sfire.amount;
@@ -240,17 +245,21 @@ pub mod sunfire {
 
         ctx.accounts.vault_wsol.reload()?;
         ctx.accounts.vault_sfire.reload()?;
-        let spent = wsol_before.saturating_sub(ctx.accounts.vault_wsol.amount);
+        // PumpSwap pays from the wSOL account, the pump.fun bonding curve pays
+        // in native SOL straight from the vault. Both count against the same
+        // budget, so the swap can never take more than what `arm` fixed.
+        let spent_wsol = wsol_before.saturating_sub(ctx.accounts.vault_wsol.amount);
+        let spent_native = lamports_before.saturating_sub(ctx.accounts.burn_vault.lamports());
+        let spent = spent_wsol.checked_add(spent_native).ok_or(SunfireError::OverBudget)?;
         let bought = ctx.accounts.vault_sfire.amount.saturating_sub(sfire_before);
         require!(spent <= budget, SunfireError::OverBudget);
         require!(bought >= min_out && bought > 0, SunfireError::SlippageExceeded);
-        require!(ctx.accounts.burn_vault.lamports() == lamports_before, SunfireError::VaultTouched);
 
         // Burn everything the vault holds, including any earlier leftovers.
         let to_burn = ctx.accounts.vault_sfire.amount;
-        token::burn(
+        token_interface::burn(
             CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
+                ctx.accounts.sfire_token_program.to_account_info(),
                 Burn {
                     mint: ctx.accounts.sfire_mint.to_account_info(),
                     from: ctx.accounts.vault_sfire.to_account_info(),
@@ -373,7 +382,8 @@ pub struct Initialize<'info> {
     /// CHECK: system-owned PDA that holds the burn share.
     #[account(seeds = [BURN_VAULT_SEED], bump)]
     pub burn_vault: UncheckedAccount<'info>,
-    pub sfire_mint: Account<'info, Mint>,
+    /// SPL Token or Token-2022 (pump.fun mints are Token-2022).
+    pub sfire_mint: InterfaceAccount<'info, SfireMint>,
     pub system_program: Program<'info, System>,
 }
 
@@ -450,16 +460,22 @@ pub struct Execute<'info> {
     pub burn_vault: SystemAccount<'info>,
     #[account(mut, token::mint = wsol_mint, token::authority = burn_vault)]
     pub vault_wsol: Account<'info, TokenAccount>,
-    #[account(mut, token::mint = sfire_mint, token::authority = burn_vault)]
-    pub vault_sfire: Account<'info, TokenAccount>,
-    #[account(mut)]
-    pub sfire_mint: Account<'info, Mint>,
+    #[account(
+        mut, token::mint = sfire_mint, token::authority = burn_vault,
+        token::token_program = sfire_token_program
+    )]
+    pub vault_sfire: InterfaceAccount<'info, SfireAccount>,
+    #[account(mut, mint::token_program = sfire_token_program)]
+    pub sfire_mint: InterfaceAccount<'info, SfireMint>,
     #[account(address = WSOL_MINT)]
     pub wsol_mint: Account<'info, Mint>,
     /// CHECK: pinned to Jupiter v6.
     #[account(address = JUPITER_V6)]
     pub jupiter_program: UncheckedAccount<'info>,
+    /// SPL Token, for the wSOL account.
     pub token_program: Program<'info, Token>,
+    /// Program that owns the $SFIRE mint (SPL Token or Token-2022).
+    pub sfire_token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -529,6 +545,8 @@ pub enum SunfireError {
     OverBudget,
     #[msg("The swap returned fewer tokens than the minimum")]
     SlippageExceeded,
+    /// No longer raised (native SOL now counts against the budget). Kept so
+    /// the codes of the errors below do not change.
     #[msg("The swap moved SOL out of the burn vault")]
     VaultTouched,
     #[msg("Wrong sysvar account")]
