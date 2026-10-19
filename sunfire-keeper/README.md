@@ -19,6 +19,15 @@ Each buyback carries a public memo, for example `SunFire buyback key=M-20261019T
 
 Holders trust that this wallet is only used for burns: unlike the program, nothing on-chain enforces it.
 
+What the bot checks before it signs a buyback, since it signs instructions returned by Jupiter's API:
+- only the Compute Budget, System, SPL Token, Associated Token Account and Jupiter v6 programs appear;
+- SOL only moves into the bot's own wSOL account, and that account can only be closed back to the bot;
+- a simulation shows at most the buyback amount plus 0.01 SOL of fees and rent leaving the wallet, and at least Jupiter's minimum output arriving in the bot's own $SFIRE account.
+
+Only memos from transactions the bot paid for count when it checks which events were already bought, so nobody can block a burn by sending the wallet a fake memo.
+
+Use a dedicated wallet for the bot, never one that holds anything else.
+
 Set up pump.fun fee sharing with the bot wallet as one of the shareholders (for example 50 % dev wallet, 50 % bot wallet).
 
 | Variable | Default | |
@@ -30,6 +39,7 @@ Set up pump.fun fee sharing with the bot wallet as one of the shareholders (for 
 | `MAX_EVENT_AGE_HOURS` | `6` | Older events are ignored |
 | `FEE_CRANK_MINUTES` | `30` | `0` turns the fee payout off |
 | `CRANK_MIN_SOL` | `0.01` | |
+| `MAX_PRICE_IMPACT_PCT` | `5` | A buyback with a higher price impact waits for a later tick |
 | `JUPITER_DEXES` | | Optional: restrict buybacks to these Jupiter DEX labels |
 
 `DRY_RUN`, `RPC_URL`, `POLL_SECONDS`, `SLIPPAGE_BPS`, `JUPITER_API`, `JUPITER_API_KEY` and `ALERT_WEBHOOK_URL` work as in program mode below.

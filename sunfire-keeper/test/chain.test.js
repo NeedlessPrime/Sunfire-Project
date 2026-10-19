@@ -40,3 +40,21 @@ test("a failed confirmation is an error", async () => {
   chain.conn.confirmTransaction = async () => ({ value: { err: { InstructionError: [0, "Custom"] } } });
   await assert.rejects(chain.send("execute", [ix]), /execute failed/);
 });
+
+test("memos only count when the bot paid for the transaction, across the whole window", async () => {
+  const { chain, signer } = stubbed(false);
+  const spoofer = Keypair.generate().publicKey;
+  const page1 = [
+    { signature: "a", blockTime: 1000, memo: "[40] SunFire buyback key=M-1", err: null },
+    { signature: "b", blockTime: 990, memo: "[40] SunFire buyback key=X-2", err: null },
+    ...Array.from({ length: 998 }, (_, i) => ({ signature: `spam${i}`, blockTime: 980, memo: null, err: null })),
+  ];
+  const page2 = [
+    { signature: "c", blockTime: 900, memo: "[40] SunFire burn key=M-0", err: null },
+    { signature: "old", blockTime: 100, memo: "[40] SunFire buyback key=M-old", err: null },
+  ];
+  chain.conn.getSignaturesForAddress = async (_pk, { before }) => (before ? page2 : page1);
+  chain.conn.getTransaction = async (sig) => ({ transaction: { message: { staticAccountKeys: [sig === "b" ? spoofer : signer.publicKey] } } });
+  const memos = await chain.signedMemosSince(signer.publicKey, 500);
+  assert.deepEqual(memos, ["[40] SunFire buyback key=M-1", "[40] SunFire burn key=M-0"]);
+});

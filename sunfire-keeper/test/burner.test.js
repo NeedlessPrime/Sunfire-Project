@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { Burner, MEMO_PROGRAM } from "../src/burner.js";
-import { ata, TOKEN_PROGRAM } from "../src/program.js";
+import { ata, JUPITER_V6, TOKEN_PROGRAM, WSOL_MINT } from "../src/program.js";
 import { feeAccounts, PUMP, PUMP_AMM } from "../src/pumpfees.js";
 
 const MINT = new PublicKey("Eowpa4SXEkjsMawvqKwWwayrt3rRS8aJpeThV4dDpump");
@@ -19,7 +19,14 @@ class FakeChain {
   async accountData(pk) { return pk.equals(MINT) ? Buffer.alloc(82, 6) : (this.data.get(pk.toBase58()) ?? null); }
   async tokenBalance(pk) { return this.tokens.get(pk.toBase58()) ?? 0n; }
   async latestBlockhash() { return "11111111111111111111111111111111"; }
-  async recentMemos() { return this.memos; }
+  async signedMemosSince() { return this.memos; }
+  // Default simulation: the swap spends what it was asked and brings the quoted minimum.
+  async simulate(ixs, { watch }) {
+    if (this.simulateWith) return this.simulateWith(ixs, watch);
+    const tokens = Buffer.alloc(72);
+    tokens.writeBigUInt64LE((this.tokens.get(watch[1].toBase58()) ?? 0n) + 900n, 64);
+    return { err: null, logs: [], accounts: [{ lamports: this.balance - (this.lastAmount ?? 0n) - 5_000n, data: Buffer.alloc(0) }, { lamports: 2_039_280n, data: tokens }] };
+  }
   async send(label, ixs) {
     this.sent.push({ label, ixs });
     const memo = ixs.find((ix) => ix.programId.equals(MEMO_PROGRAM));
@@ -29,15 +36,26 @@ class FakeChain {
   }
 }
 
+/** What Jupiter returns for a wallet swap: wrap SOL, sync, route, close the wSOL account. */
+function swapIxs(user, amount) {
+  const wsol = ata(user, WSOL_MINT, TOKEN_PROGRAM);
+  return [
+    SystemProgram.transfer({ fromPubkey: user, toPubkey: wsol, lamports: amount }),
+    new TransactionInstruction({ programId: TOKEN_PROGRAM, keys: [{ pubkey: wsol, isSigner: false, isWritable: true }], data: Buffer.from([17]) }),
+    new TransactionInstruction({ programId: JUPITER_V6, keys: [{ pubkey: user, isSigner: true, isWritable: true }], data: Buffer.from([1]) }),
+    new TransactionInstruction({ programId: TOKEN_PROGRAM, keys: [{ pubkey: wsol, isSigner: false, isWritable: true }, { pubkey: user, isSigner: false, isWritable: true }, { pubkey: user, isSigner: true, isWritable: false }], data: Buffer.from([9]) }),
+  ];
+}
+
 function make({ events = [M_FLARE], over = {} } = {}) {
   const keeper = Keypair.generate();
   const chain = new FakeChain(keeper.publicKey);
   const swaps = [];
   const b = new Burner({
-    cfg: { keeper, sfireMint: MINT, reserveLamports: SOL / 50n, minBuyLamports: 2_000_000n, slippageBps: 300, feeCrankMs: 0, crankMinLamports: SOL / 100n, jupiterApi: "x", ...over },
+    cfg: { keeper, sfireMint: MINT, reserveLamports: SOL / 50n, minBuyLamports: 2_000_000n, slippageBps: 300, feeCrankMs: 0, crankMinLamports: SOL / 100n, maxPriceImpactPct: 5, maxEventAgeSec: 6 * 3600, jupiterApi: "x", ...over },
     chain,
     readEvents: async () => events,
-    buildSwap: async (a) => { swaps.push(a); return { minOut: 900n, instructions: [], lookupTables: [] }; },
+    buildSwap: async (a) => { swaps.push(a); chain.lastAmount = a.amount; return { minOut: 900n, priceImpactPct: 0.4, instructions: swapIxs(keeper.publicKey, a.amount), lookupTables: [] }; },
     log: () => {},
   });
   return { b, chain, swaps, keeper };
@@ -108,4 +126,58 @@ test("fee crank distributes once the creator vault holds enough, and moves PumpS
   await b.tick();
   const programs = chain.sent[0].ixs.map((ix) => ix.programId.toBase58());
   assert.deepEqual(programs, [PUMP_AMM.toBase58(), PUMP.toBase58()]);
+});
+
+// ---- what the bot refuses to sign ----
+
+async function refused(tamper) {
+  const { b, chain, swaps } = make();
+  const real = b.buildSwap;
+  b.buildSwap = async (a) => tamper(await real(a), a);
+  await assert.rejects(() => b.tick(), /refused|failed/);
+  assert.ok(!chain.sent.some((s) => s.label.includes("buy")), "nothing sent");
+  return swaps;
+}
+
+test("refuses a swap with an unknown program", async () => {
+  await refused((swap) => ({ ...swap, instructions: [...swap.instructions, new TransactionInstruction({ programId: Keypair.generate().publicKey, keys: [], data: Buffer.alloc(0) })] }));
+});
+
+test("refuses a swap that sends SOL anywhere but the bot's wSOL account", async () => {
+  await refused((swap, a) => {
+    const [, ...rest] = swap.instructions;
+    return { ...swap, instructions: [SystemProgram.transfer({ fromPubkey: a.user, toPubkey: Keypair.generate().publicKey, lamports: a.amount }), ...rest] };
+  });
+});
+
+test("refuses a swap that closes the wSOL account to someone else", async () => {
+  await refused((swap) => {
+    const close = swap.instructions[3];
+    const thief = Keypair.generate().publicKey;
+    const bad = new TransactionInstruction({ programId: close.programId, keys: [close.keys[0], { pubkey: thief, isSigner: false, isWritable: true }, close.keys[2]], data: close.data });
+    return { ...swap, instructions: [...swap.instructions.slice(0, 3), bad] };
+  });
+});
+
+test("refuses a swap whose simulation brings the tokens elsewhere or spends too much", async () => {
+  for (const [spentExtra, tokensIn] of [[0n, 0n], [SOL / 10n, 900n]]) {
+    const { b, chain } = make();
+    chain.simulateWith = (ixs, watch) => {
+      const tokens = Buffer.alloc(72); tokens.writeBigUInt64LE(tokensIn, 64);
+      return { err: null, logs: [], accounts: [{ lamports: chain.balance - chain.lastAmount - spentExtra, data: Buffer.alloc(0) }, { lamports: 1n, data: tokens }] };
+    };
+    await assert.rejects(() => b.tick(), /refused/);
+    assert.ok(!chain.sent.some((s) => s.label.includes("buy")));
+  }
+});
+
+test("waits instead of buying into a thin pool", async () => {
+  const { b, chain } = make();
+  const real = b.buildSwap;
+  b.buildSwap = async (a) => ({ ...(await real(a)), priceImpactPct: 12 });
+  await b.tick();
+  assert.equal(chain.sent.length, 0);
+  b.buildSwap = real;
+  await b.tick();
+  assert.ok(chain.sent.some((s) => s.label.includes("buy")), "bought once the price impact is acceptable");
 });

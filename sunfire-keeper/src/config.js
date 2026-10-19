@@ -36,14 +36,20 @@ export function loadConfig(env = process.env) {
     maxEventAgeSec: num(env.MAX_EVENT_AGE_HOURS, 6) * 3600,
     feeCrankMs: num(env.FEE_CRANK_MINUTES, 30) * 60_000,
     crankMinLamports: lamports(num(env.CRANK_MIN_SOL, 0.01)),
+    maxPriceImpactPct: num(env.MAX_PRICE_IMPACT_PCT, 5),
   };
 }
 
 /** Accepts a base58 secret key or the JSON byte array written by solana-keygen. */
 export function parseSecretKey(value) {
-  const s = value.trim();
-  const bytes = s.startsWith("[") ? Uint8Array.from(JSON.parse(s)) : bs58.decode(s);
-  return Keypair.fromSecretKey(bytes);
+  try {
+    const s = value.trim();
+    const bytes = s.startsWith("[") ? Uint8Array.from(JSON.parse(s)) : bs58.decode(s);
+    return Keypair.fromSecretKey(bytes);
+  } catch {
+    // Never echo the parser's message: it can quote part of the key.
+    throw new Error("KEEPER_SECRET_KEY is not a valid secret key (base58 or the solana-keygen JSON array)");
+  }
 }
 
 const lamports = (solAmount) => BigInt(Math.round(solAmount * 1e9));

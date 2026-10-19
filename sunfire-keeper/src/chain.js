@@ -27,10 +27,34 @@ export class Chain {
     return (await this.conn.getLatestBlockhash()).blockhash;
   }
 
-  /** Memo texts of the most recent transactions signed by or sent to `pubkey`. */
-  async recentMemos(pubkey, limit = 200) {
-    const sigs = await this.conn.getSignaturesForAddress(pubkey, { limit });
-    return sigs.filter((s) => !s.err && s.memo).map((s) => s.memo);
+  /**
+   * SunFire memos of the transactions `pubkey` paid for since `sinceSec`.
+   * Anyone can send a transaction that touches the wallet with any memo, so
+   * only transactions whose fee payer is `pubkey` count. Pages back through
+   * the whole window, so spam cannot push real memos out of view.
+   */
+  async signedMemosSince(pubkey, sinceSec, { maxPages = 20 } = {}) {
+    this.payerOf ??= new Map();
+    const candidates = [];
+    let before;
+    scan: for (let page = 0; page < maxPages; page++) {
+      const sigs = await this.conn.getSignaturesForAddress(pubkey, { limit: 1000, before });
+      for (const s of sigs) {
+        if (s.blockTime && s.blockTime < sinceSec) break scan;
+        if (!s.err && s.memo?.includes("SunFire")) candidates.push(s);
+      }
+      if (sigs.length < 1000) break;
+      before = sigs[sigs.length - 1].signature;
+    }
+    const memos = [];
+    for (const s of candidates) {
+      if (!this.payerOf.has(s.signature)) {
+        const tx = await this.conn.getTransaction(s.signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+        this.payerOf.set(s.signature, tx?.transaction.message.staticAccountKeys[0]?.toBase58() ?? null);
+      }
+      if (this.payerOf.get(s.signature) === pubkey.toBase58()) memos.push(s.memo);
+    }
+    return memos;
   }
 
   async readConfig() {
@@ -56,7 +80,7 @@ export class Chain {
    * Sends the instructions in one v0 transaction signed by the keeper.
    * In dry-run mode the transaction is only simulated and never sent.
    */
-  async send(label, instructions, { lookupTables = [], computeUnits } = {}) {
+  async build(instructions, { lookupTables = [], computeUnits } = {}) {
     const tables = await Promise.all(lookupTables.map((k) => this.conn.getAddressLookupTable(k).then((r) => r.value)));
     const pre = computeUnits && !instructions.some((ix) => ix.programId.equals(ComputeBudgetProgram.programId))
       ? [ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits })]
@@ -69,6 +93,25 @@ export class Chain {
     }).compileToV0Message(tables.filter(Boolean));
     const tx = new VersionedTransaction(message);
     tx.sign([this.signer]);
+    return { tx, blockhash, lastValidBlockHeight };
+  }
+
+  /**
+   * Simulates the instructions and returns the state of `watch` accounts
+   * after them, as { lamports, data } or null for an account that would not exist.
+   */
+  async simulate(instructions, { lookupTables, computeUnits, watch = [] } = {}) {
+    const { tx } = await this.build(instructions, { lookupTables, computeUnits });
+    const sim = await this.conn.simulateTransaction(tx, {
+      sigVerify: false,
+      accounts: { encoding: "base64", addresses: watch.map((k) => k.toBase58()) },
+    });
+    const accounts = (sim.value.accounts ?? []).map((a) => a && { lamports: BigInt(a.lamports), data: Buffer.from(a.data[0], "base64") });
+    return { err: sim.value.err, logs: sim.value.logs ?? [], accounts };
+  }
+
+  async send(label, instructions, { lookupTables = [], computeUnits } = {}) {
+    const { tx, blockhash, lastValidBlockHeight } = await this.build(instructions, { lookupTables, computeUnits });
 
     if (this.dryRun) {
       const sim = await this.conn.simulateTransaction(tx, { sigVerify: false });
