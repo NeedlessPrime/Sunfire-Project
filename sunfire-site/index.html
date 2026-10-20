@@ -6,6 +6,7 @@
 <title>SunFire · Ruled by the Sun</title>
 <meta name="description" content="SunFire ($SFIRE) is a Solana token ruled by the Sun. Real solar flares and geomagnetic storms trigger buybacks and burns on-chain. The code is fully public.">
 <meta name="theme-color" content="#050505">
+<link rel="preconnect" href="https://sdo.gsfc.nasa.gov">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -143,7 +144,9 @@ p { margin: 0; }
   -webkit-mask-image: radial-gradient(circle, #000 58%, transparent 68%); mask-image: radial-gradient(circle, #000 58%, transparent 68%);
 }
 .sun img.ok { opacity: 1; }
-.sun-core { transition: opacity 1.6s ease; }
+/* The drawn sphere only stands in when NASA's image is slow to arrive. */
+.sun-core { opacity: 0; transition: opacity 1.6s ease; }
+.sun.wait .sun-core { opacity: 1; }
 .sun:has(img.ok) .sun-core { opacity: 0; }
 .sun-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 140, 40, .22), transparent 55%); animation: breathe 9s ease-in-out infinite reverse; }
 @keyframes breathe { 50% { transform: scale(1.025); } }
@@ -472,6 +475,12 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .js [data-reveal], .js [data-reveal] > .photo, .js .split .w > span { opacity: 1 !important; transform: none !important; filter: none !important; clip-path: none !important; }
   .js .hero .sun { opacity: 1 !important; transform: translate(-50%, -50%) !important; }
+  /* The hero Sun keeps its slow turn and soft fades: nothing crosses the screen or follows scrolling or the pointer. */
+  .sun-disk { animation: spin 260s linear infinite !important; }
+  .sun-corona { animation: corona 8s ease-in-out infinite !important; }
+  .sun-corona::before { animation: spin 190s linear infinite reverse !important; }
+  .sun-corona::after { animation: spin 320s linear infinite !important; }
+  .sun img, .sun-core { transition: opacity 1.6s ease !important; }
   .js .step:not(.in) { --draw: 1; }
 }
 </style>
@@ -792,6 +801,14 @@ function loadImg(img) {
   img.src = src.includes("sdo.gsfc") ? src + "?t=" + stamp() : src;
   delete img.dataset.src;
 }
+// The hero Sun loads first; the drawn sphere only shows if NASA's image is slow.
+(function heroSun() {
+  const img = document.querySelector(".sun img");
+  if (!img) return;
+  img.fetchPriority = "high";
+  loadImg(img);
+  setTimeout(() => { if (!img.classList.contains("ok")) img.closest(".sun").classList.add("wait"); }, 1200);
+})();
 const lazy = [...document.querySelectorAll("img[data-src]")];
 if ("IntersectionObserver" in window) {
   const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { loadImg(e.target); io.unobserve(e.target); } }), { rootMargin: "600px 0px" });
