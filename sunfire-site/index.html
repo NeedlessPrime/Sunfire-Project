@@ -130,17 +130,18 @@ p { margin: 0; }
 .hero-note b { color: var(--text); font-weight: 600; display: block; }
 .hero-aside { grid-column: 10 / span 3; font-size: 13px; line-height: 1.5; color: var(--muted); text-align: right; }
 .hero-center { grid-column: 1 / -1; position: relative; display: grid; place-items: center; min-height: 54vh; }
-.sun { position: absolute; left: 50%; top: 50%; width: min(62vh, 50vw); aspect-ratio: 1; transform: translate(-50%, -50%); mix-blend-mode: screen; }
+.sun { position: absolute; left: 50%; top: 50%; width: min(62vh, 50vw); aspect-ratio: 1; transform: translate(-50%, -50%); }
 .sun-core {
   position: absolute; inset: 0; border-radius: 50%;
   background: radial-gradient(circle at 42% 38%, #ffd27a, #ff8a1f 40%, #c53a00 70%, #3a0d00 100%);
   box-shadow: 0 0 120px 20px rgba(255, 106, 0, .32), 0 0 300px 60px rgba(255, 74, 28, .12);
   animation: breathe 9s ease-in-out infinite;
 }
-/* SDO frames have the disk in the middle and labels in the corners: crop to the disk. */
+/* SDO frames have the disk in the middle and labels in the corners: crop to the disk. The
+   filter makes the black sky transparent once, at paint, so the turning disk costs nothing to blend. */
 .sun img {
   position: absolute; inset: -12%; width: 124%; height: 124%; max-width: none; object-fit: cover;
-  opacity: 0; transition: opacity 1.6s ease;
+  opacity: 0; transition: opacity 1.6s ease; filter: url(#sky-to-alpha);
   -webkit-mask-image: radial-gradient(circle, #000 58%, transparent 68%); mask-image: radial-gradient(circle, #000 58%, transparent 68%);
 }
 .sun img.ok { opacity: 1; }
@@ -151,14 +152,15 @@ p { margin: 0; }
 .sun-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 140, 40, .22), transparent 55%); animation: breathe 9s ease-in-out infinite reverse; }
 @keyframes breathe { 50% { transform: scale(1.025); } }
 /* The Sun turns slowly inside a shimmering corona, shaded like a sphere, and drifts a little with the pointer. */
-.sun-float { position: absolute; inset: 0; transform: translate3d(var(--mx, 0px), var(--my, 0px), 0); }
-.sun-disk { position: absolute; inset: 0; mix-blend-mode: screen; animation: spin 260s linear infinite; will-change: transform; }
-.sun-corona {
-  position: absolute; inset: -24%; pointer-events: none; animation: corona 8s ease-in-out infinite;
+/* Every moving layer only turns, fades or shifts, so the GPU composites it without repainting. */
+.sun-float { position: absolute; inset: 0; will-change: transform; }
+.sun-disk { position: absolute; inset: 0; animation: spin 260s linear infinite; will-change: transform; }
+.sun-corona { position: absolute; inset: -24%; pointer-events: none; animation: corona 8s ease-in-out infinite; will-change: opacity; }
+.sun-corona::before, .sun-corona::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%; will-change: transform;
   -webkit-mask-image: radial-gradient(circle closest-side, transparent 60%, #000 67%, rgba(0, 0, 0, .45) 80%, transparent 100%);
   mask-image: radial-gradient(circle closest-side, transparent 60%, #000 67%, rgba(0, 0, 0, .45) 80%, transparent 100%);
 }
-.sun-corona::before, .sun-corona::after { content: ""; position: absolute; inset: 0; border-radius: 50%; will-change: transform; }
 .sun-corona::before {
   background: repeating-conic-gradient(rgba(255, 150, 60, 0) 0deg, rgba(255, 150, 60, .26) 4deg, rgba(255, 150, 60, 0) 9deg, rgba(255, 196, 110, .14) 13deg, rgba(255, 150, 60, 0) 19deg);
   animation: spin 190s linear infinite reverse;
@@ -509,6 +511,8 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
 </header>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Turns the black sky of NASA's frames transparent, like a screen blend but painted once. -->
+  <filter id="sky-to-alpha" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  1.6 1.2 0.4 0 0"/></filter>
   <symbol id="gh-icon" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></symbol>
 </svg>
 
@@ -887,8 +891,7 @@ if ("IntersectionObserver" in window) {
   let tx = 0, ty = 0, x = 0, y = 0, raf = 0;
   const step = () => {
     x += (tx - x) * 0.06; y += (ty - y) * 0.06;
-    el.style.setProperty("--mx", x.toFixed(2) + "px");
-    el.style.setProperty("--my", y.toFixed(2) + "px");
+    el.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
     raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.05 ? requestAnimationFrame(step) : 0;
   };
   addEventListener("pointermove", (e) => {
@@ -902,21 +905,25 @@ if ("IntersectionObserver" in window) {
 // Twinkling starfield behind the hero; it stops drawing when scrolled away.
 (function stars() {
   const cv = $("stars"), ctx = cv.getContext("2d");
-  let W, H, pts = [], visible = true, running = false;
+  let W, H, pts = [], visible = true, running = false, last = 0;
   function size() {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
-    W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Stars are specks: one canvas pixel per CSS pixel is plenty, and far lighter to upload each frame.
+    W = cv.clientWidth; H = cv.clientHeight; cv.width = W; cv.height = H;
     pts = Array.from({ length: Math.round(W * H / 5200) }, () => ({ x: Math.random() * W, y: Math.random() * H, r: Math.random() * 1.1 + .2, a: Math.random() * 6, s: Math.random() * .015 + .003, warm: Math.random() < .25 }));
   }
-  function frame() {
+  function frame(steps = 1) {
     ctx.clearRect(0, 0, W, H);
     for (const p of pts) {
-      p.a += p.s;
+      p.a += p.s * steps;
       ctx.globalAlpha = .35 + Math.abs(Math.sin(p.a)) * .65; ctx.fillStyle = p.warm ? "#ffd59a" : "#fff";
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
     }
   }
-  function loop() { frame(); if (visible && !reduce) requestAnimationFrame(loop); else running = false; }
+  // A slow twinkle needs no more than 30 redraws a second.
+  function loop(t = 0) {
+    if (t - last >= 32) { frame(last ? Math.min((t - last) / 16.7, 4) : 1); last = t; }
+    if (visible && !reduce) requestAnimationFrame(loop); else { running = false; last = 0; }
+  }
   function start() { if (!running) { running = true; loop(); } }
   size(); start();
   let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { size(); frame(); }, 150); });
