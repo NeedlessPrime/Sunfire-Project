@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://services.swpc.noaa.gov">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap">
 <script>document.documentElement.classList.add("js");</script>
 <style>
 :root {
@@ -30,8 +30,8 @@
   --aurora: #63e6a6;
   --sol-a: #9945ff;
   --sol-b: #14f195;
-  --serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  --sans: "Manrope", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --sans: "Inter Tight", "Helvetica Neue", Arial, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --wrap: 1280px;
   --ease: cubic-bezier(.2, .7, .1, 1);
@@ -43,9 +43,9 @@ a { color: inherit; text-decoration: none; }
 img, canvas, video { display: block; }
 .wrap { width: min(var(--wrap), calc(100% - 2 * clamp(16px, 4vw, 48px))); margin: 0 auto; }
 .eyebrow { font: 600 12px/1 var(--sans); letter-spacing: .3em; text-transform: uppercase; color: var(--soft); }
-.serif { font-family: var(--serif); font-weight: 600; }
-.title { font: 600 clamp(64px, 11vw, 176px)/.88 var(--serif); letter-spacing: .01em; text-transform: uppercase; }
-.h2 { font: 600 clamp(46px, 7vw, 108px)/.92 var(--serif); letter-spacing: .005em; }
+.serif { font-family: var(--serif); font-weight: 400; }
+.title { font: 400 clamp(64px, 11vw, 176px)/.88 var(--serif); letter-spacing: .01em; text-transform: uppercase; }
+.h2 { font: 400 clamp(46px, 7vw, 108px)/.92 var(--serif); letter-spacing: .005em; }
 .h2 em { font-style: italic; color: var(--gold-2); }
 .lede { font-size: clamp(16px, 1.25vw, 19px); color: var(--soft); max-width: 46ch; }
 .bar { width: 64px; height: 2px; background: var(--gold); box-shadow: 0 0 14px var(--gold); }
@@ -140,14 +140,14 @@ img, canvas, video { display: block; }
 /* The idea */
 .idea { overflow: hidden; }
 .idea::before { content: ""; position: absolute; right: -20vw; top: -10vw; width: 70vw; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(255, 170, 40, .09), transparent 62%); pointer-events: none; }
-.statement { font: 600 clamp(54px, 9vw, 150px)/.92 var(--serif); letter-spacing: -.005em; max-width: 12ch; }
+.statement { font: 400 clamp(54px, 9vw, 150px)/.92 var(--serif); letter-spacing: -.005em; max-width: 12ch; }
 .statement em { font-style: italic; color: var(--gold-2); }
 .idea-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-gap: 24px; row-gap: 48px; margin-top: clamp(40px, 6vw, 80px); }
 .idea-copy { grid-column: 1 / span 5; display: grid; gap: 20px; font-size: 18px; color: var(--soft); }
 .idea-copy strong { color: var(--text); font-weight: 600; }
 .numbers { grid-column: 7 / span 6; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 24px; border-top: 1px solid var(--line-2); }
 .num { padding: 26px 0 0; display: grid; gap: 10px; align-content: start; min-width: 0; }
-.num strong { font: 600 clamp(38px, 3.6vw, 60px)/.9 var(--serif); color: var(--text); white-space: nowrap; }
+.num strong { font: 400 clamp(38px, 3.6vw, 60px)/.9 var(--serif); color: var(--text); white-space: nowrap; }
 .num strong small { font-size: .42em; color: var(--gold); margin-left: 4px; font-family: var(--sans); font-weight: 500; }
 .num > span { font-size: 13px; color: var(--muted); line-height: 1.45; }
 
@@ -163,7 +163,7 @@ img, canvas, video { display: block; }
 .step-ico { position: relative; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-2); background: var(--panel); z-index: 1; }
 .step-ico::after { content: attr(data-n); position: absolute; top: -6px; right: -6px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--gold); color: #140b01; font: 600 12px/1 var(--mono); }
 .step-ico svg { width: 38px; height: 38px; stroke: var(--gold-2); fill: none; stroke-width: 1.5; }
-.step h3 { font: 600 clamp(30px, 3vw, 42px)/1 var(--serif); }
+.step h3 { font: 400 clamp(30px, 3vw, 42px)/1 var(--serif); }
 .step p { color: var(--soft); max-width: 34ch; }
 .step .tag { font: 500 12px/1.4 var(--mono); color: var(--muted); }
 
@@ -173,7 +173,7 @@ img, canvas, video { display: block; }
 .tile:hover { border-color: var(--line-2); transform: translateY(-4px); }
 .tile::before { content: ""; position: absolute; inset: auto -30% -50% -30%; height: 70%; background: radial-gradient(closest-side, var(--c, rgba(255, 181, 46, .22)), transparent); pointer-events: none; }
 .tile .k { font: 500 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.tile .pct { font: 600 clamp(56px, 5.6vw, 88px)/.9 var(--serif); }
+.tile .pct { font: 400 clamp(56px, 5.6vw, 88px)/.9 var(--serif); }
 .tile .pct small { font-size: .38em; font-family: var(--sans); font-weight: 500; color: var(--soft); margin-left: 6px; }
 .tile p { color: var(--soft); font-size: 14px; position: relative; }
 .meter { position: relative; height: 4px; border-radius: 4px; background: rgba(255, 255, 255, .07); overflow: hidden; }
@@ -248,7 +248,7 @@ img, canvas, video { display: block; }
 .hud { display: grid; gap: 16px; align-content: start; }
 .card { border: 1px solid var(--line); border-radius: 22px; background: var(--panel); padding: 20px 20px 18px; display: grid; gap: 12px; }
 .card .k { display: flex; justify-content: space-between; align-items: center; font: 500 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.card .v { font: 600 54px/.9 var(--serif); }
+.card .v { font: 400 54px/.9 var(--serif); }
 .card .v small { font: 500 13px/1 var(--mono); color: var(--muted); margin-left: 8px; }
 .card canvas { width: 100%; height: 96px; }
 .status { display: inline-flex; align-items: center; gap: 8px; font: 500 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--aurora); padding: 6px 10px; border-radius: 999px; border: 1px solid currentColor; }
@@ -283,21 +283,12 @@ img, canvas, video { display: block; }
 .launch .inner { position: relative; display: grid; justify-items: center; gap: 26px; }
 .launch .h2 { font-size: clamp(56px, 9vw, 150px); }
 .launch .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-/* Contract address: one box in the launch section, a pill in the hero, a buy button in the nav. */
-.ca-box { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; max-width: 100%; padding: 14px 14px 14px 20px; border: 1px dashed var(--line-2); border-radius: 16px; background: rgba(8, 11, 18, .6); }
-.ca-box.set { border-style: solid; border-color: rgba(255, 181, 46, .45); box-shadow: 0 0 40px rgba(255, 170, 40, .12); }
-.ca-k { font: 500 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.ca-full { font: 500 14px/1.4 var(--mono); color: var(--gold); word-break: break-all; text-align: left; }
-.ca-copy { height: 36px; padding: 0 16px; border-radius: 999px; border: 0; cursor: pointer; background: var(--gold); color: #140b01; font: 600 12px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; transition: background .2s; }
-.ca-copy:hover { background: var(--gold-2); }
-.ca-links { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
-.ca-links a { font: 500 13px/1 var(--sans); color: var(--soft); padding: 10px 14px; border: 1px solid var(--line-2); border-radius: 999px; transition: color .2s, border-color .2s; }
-.ca-links a:hover { color: var(--gold-2); border-color: var(--gold); }
-.ca-pill { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 6px 0 14px; border-radius: 999px; border: 1px solid rgba(255, 181, 46, .45); background: rgba(8, 11, 18, .75); color: var(--text); cursor: pointer; font: 500 13px/1 var(--mono); }
-.ca-pill .ca-k { color: var(--gold); }
-.ca-pill .ca-copy { height: 28px; padding: 0 12px; font-size: 11px; }
-.buy { display: inline-flex; align-items: center; height: 40px; padding: 0 16px; border-radius: 999px; background: var(--gold); color: #140b01; font: 600 13px/1 var(--sans); transition: background .2s, transform .2s; }
-.buy:hover { background: var(--gold-2); transform: translateY(-1px); }
+/* Contract address: a bar at the top of the hero, hidden until the address is filled in. */
+.ca-top { display: inline-flex; align-items: center; gap: 12px; max-width: 100%; padding: 6px 6px 6px 16px; border-radius: 999px; border: 1px solid rgba(255, 181, 46, .5); background: rgba(8, 11, 18, .8); box-shadow: 0 0 30px rgba(255, 170, 40, .18); cursor: pointer; }
+.ca-k { font: 600 11px/1 var(--mono); letter-spacing: .14em; color: var(--gold); }
+.ca-v { font: 500 13px/1.3 var(--mono); color: var(--text); word-break: break-all; text-align: left; }
+.ca-copy { flex: none; height: 30px; padding: 0 14px; border-radius: 999px; border: 0; cursor: pointer; background: var(--gold); color: #140b01; font: 600 11px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; transition: background .2s; }
+.ca-top:hover .ca-copy { background: var(--gold-2); }
 [hidden] { display: none !important; }
 
 /* Footer */
@@ -377,7 +368,6 @@ img, canvas, video { display: block; }
       <a href="#tech">Tech</a>
     </nav>
     <div class="nav-right">
-      <a class="buy" id="nav-buy" href="#launch" target="_blank" rel="noopener" hidden>Buy $SFIRE</a>
       <a class="gh" href="https://github.com/NeedlessPrime/Sunfire-Project" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#gh-icon"/></svg><span class="label">GitHub</span><span class="arr" aria-hidden="true">↗</span></a>
     </div>
   </div>
@@ -397,6 +387,9 @@ img, canvas, video { display: block; }
       <div class="sun-fallback" id="sun-fallback" aria-hidden="true"></div>
 
       <div class="panel p1" id="p1">
+        <!-- CONTRACT ADDRESS: paste the token address between the quotes of data-ca below.
+             The bar then shows at the top of the site, with a Copy button. Empty = hidden. -->
+        <button class="ca-top" id="ca-top" type="button" data-ca="" aria-label="Copy the contract address" hidden><span class="ca-k">CA</span><span class="ca-v" id="ca-v"></span><span class="ca-copy">Copy</span></button>
         <span class="chip"><i class="sol-dot" aria-hidden="true"></i><span id="hero-status">A Solana token · launching on pump.fun</span></span>
         <h1 class="title">Ruled by<br>the Sun</h1>
         <p class="lede">The first token wired to space. Every solar flare NOAA's satellites record burns $SFIRE on Solana. No team picks the date, and no one picks the size.</p>
@@ -404,7 +397,6 @@ img, canvas, video { display: block; }
           <a class="btn" href="#how">How it works</a>
           <a class="btn ghost" href="#live"><i class="live-dot" aria-hidden="true"></i>The Sun, live</a>
         </div>
-        <button class="ca-pill" id="hero-ca" type="button" aria-label="Copy the contract address" hidden><span class="ca-k">CA</span><span id="hero-ca-short"></span><span class="ca-copy">Copy</span></button>
       </div>
 
       <div class="panel p2" id="p2">
@@ -633,18 +625,8 @@ img, canvas, video { display: block; }
   <section class="section launch" id="launch">
     <div class="wrap inner">
       <span class="chip" data-reveal><i class="sol-dot" aria-hidden="true"></i>Solana · fair launch</span>
-      <h2 class="h2 split" data-split id="launch-title">Launching on <em>pump.fun.</em></h2>
-      <p class="lede" data-reveal style="--d:.1s;text-align:center" id="launch-lede">A fair launch with no presale. The contract address is published here at launch. Until then, read the code and watch the Sun.</p>
-      <div class="ca-box" id="ca-box" data-reveal style="--d:.15s">
-        <span class="ca-k">Contract address</span>
-        <code class="ca-full" id="ca-full">Published here at launch</code>
-        <button class="ca-copy" id="ca-copy" type="button" hidden>Copy</button>
-      </div>
-      <div class="ca-links" id="ca-links" hidden>
-        <a id="l-pump" href="#" target="_blank" rel="noopener">pump.fun ↗</a>
-        <a id="l-dex" href="#" target="_blank" rel="noopener">DexScreener ↗</a>
-        <a id="l-scan" href="#" target="_blank" rel="noopener">Solscan ↗</a>
-      </div>
+      <h2 class="h2 split" data-split>Launching on <em>pump.fun.</em></h2>
+      <p class="lede" data-reveal style="--d:.1s;text-align:center">A fair launch with no presale. The contract address appears at the top of this site at launch. Until then, read the code and watch the Sun.</p>
       <div class="row" data-reveal style="--d:.2s">
         <a class="btn" href="https://github.com/NeedlessPrime/Sunfire-Project" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#gh-icon"/></svg>Read the code</a>
         <a class="btn ghost" href="#live"><i class="live-dot" aria-hidden="true"></i>Watch the Sun</a>
@@ -686,29 +668,21 @@ const SDO = "https://sdo.gsfc.nasa.gov/assets/img/latest/";
 const stamp = () => Math.floor(Date.now() / 180000);
 
 /* ======================= CONTRACT ADDRESS ======================= */
-// Paste $SFIRE's mint address here on launch day: the nav, the hero and the
-// launch section then show it, with copy buttons and market links.
-const CA = "";
+// The address lives in the hero's data-ca attribute. Filled in, the bar at the
+// top of the site shows it and copies it on click; empty, the bar stays hidden.
 (function contract() {
+  const bar = $("ca-top"), CA = (bar.dataset.ca || "").trim();
   if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(CA)) return;
-  const links = { pump: "https://pump.fun/coin/" + CA, dex: "https://dexscreener.com/solana/" + CA, scan: "https://solscan.io/token/" + CA };
-  const copy = async (btn) => {
+  $("ca-v").textContent = CA;
+  $("hero-status").textContent = "A Solana token · live on pump.fun";
+  bar.hidden = false;
+  bar.addEventListener("click", async () => {
     try { await navigator.clipboard.writeText(CA); } catch (e) {
       const t = Object.assign(document.createElement("textarea"), { value: CA }); document.body.append(t); t.select(); document.execCommand("copy"); t.remove();
     }
-    const label = btn.querySelector(".ca-copy") || btn;
-    const was = label.textContent; label.textContent = "Copied ✓";
-    setTimeout(() => { label.textContent = was; }, 1600);
-  };
-  const buy = $("nav-buy"); buy.href = links.pump; buy.hidden = false;
-  $("hero-status").textContent = "A Solana token · live on pump.fun";
-  const pill = $("hero-ca"); $("hero-ca-short").textContent = CA.slice(0, 4) + "…" + CA.slice(-4); pill.hidden = false;
-  pill.addEventListener("click", () => copy(pill));
-  $("ca-full").textContent = CA; $("ca-box").classList.add("set");
-  const btn = $("ca-copy"); btn.hidden = false; btn.addEventListener("click", () => copy(btn));
-  $("l-pump").href = links.pump; $("l-dex").href = links.dex; $("l-scan").href = links.scan; $("ca-links").hidden = false;
-  $("launch-title").innerHTML = "Live on <em>pump.fun.</em>";
-  $("launch-lede").textContent = "A fair launch with no presale. This is the only official contract address: always check it here before you buy.";
+    const label = bar.querySelector(".ca-copy"); label.textContent = "Copied ✓";
+    setTimeout(() => { label.textContent = "Copy"; }, 1600);
+  });
 })();
 
 /* ======================= MOTION ======================= */
