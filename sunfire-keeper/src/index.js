@@ -9,6 +9,17 @@ import { readSolarEvents } from "./solar.js";
 
 const log = (...parts) => console.log(new Date().toISOString(), ...parts);
 
+// Before launch there is no token address yet: wait idle instead of
+// crash-looping. Setting SFIRE_MINT restarts the service with it.
+if (!process.env.PROGRAM_ID && !process.env.SFIRE_MINT) {
+  log("SunFire keeper waiting: set SFIRE_MINT to the token address to start");
+  await new Promise((resolve) => {
+    const idle = setInterval(() => {}, 3600e3);
+    for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { clearInterval(idle); resolve(); });
+  });
+  process.exit(0);
+}
+
 const cfg = loadConfig();
 const chain = new Chain({ rpcUrl: cfg.rpcUrl, programId: cfg.programId, signer: cfg.keeper, dryRun: cfg.dryRun, log });
 const alert = makeAlert(cfg.alertWebhook, { log });
