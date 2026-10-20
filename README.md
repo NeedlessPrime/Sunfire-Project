@@ -74,7 +74,7 @@ The bot signs swap instructions built by Jupiter's API, so it never signs them b
 - **Program allowlist.** Only the Compute Budget, System, SPL Token, Associated Token Account and Jupiter v6 programs may appear.
 - **No outflows.** SOL can only move into the bot's own wSOL account, and that account can only be closed back to the bot.
 - **Simulation.** A simulation must show at most the buyback amount, plus 0.01 SOL for fees and rent, leaving the wallet. It must also show at least Jupiter's quoted minimum arriving in the bot's own $SFIRE account.
-- **Price impact.** A buyback with a price impact above 5 % waits for deeper liquidity.
+- **Price impact.** A buyback with a price impact above 15 % waits for deeper liquidity.
 
 Its bookkeeping:
 

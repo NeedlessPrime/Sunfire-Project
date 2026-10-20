@@ -41,7 +41,7 @@ export function loadConfig(env = process.env) {
     maxEventAgeSec: num(env.MAX_EVENT_AGE_HOURS, 6) * 3600,
     feeCrankMs: num(env.FEE_CRANK_MINUTES, 30) * 60_000,
     crankMinLamports: lamports(num(env.CRANK_MIN_SOL, 0.01)),
-    maxPriceImpactPct: num(env.MAX_PRICE_IMPACT_PCT, 5),
+    maxPriceImpactPct: num(env.MAX_PRICE_IMPACT_PCT, 15),
     // Optional: all creator fees reach the bot, which forwards this share of
     // every payout to FEE_SHARE_WALLET.
     feeShareWallet,
