@@ -54,15 +54,10 @@ button { font: inherit; color: inherit; }
 }
 @media (min-width: 700px) { .wrap { padding-left: 32px; padding-right: 32px; } }
 
-/* Film grain over everything */
+/* Film grain over everything, static: moving it made the GPU redraw the whole page */
 .grain {
-  position: fixed; inset: -50%; z-index: 100; pointer-events: none; opacity: .07;
+  position: fixed; inset: 0; z-index: 100; pointer-events: none; opacity: .07;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  animation: grain 1.2s steps(6) infinite;
-}
-@keyframes grain {
-  0% { transform: translate(0, 0); } 20% { transform: translate(-3%, 2%); } 40% { transform: translate(2%, -3%); }
-  60% { transform: translate(-2%, -1%); } 80% { transform: translate(3%, 3%); } 100% { transform: translate(0, 0); }
 }
 
 /* Type */
@@ -86,7 +81,7 @@ p { margin: 0; }
   transition: background .4s ease, border-color .4s ease;
   border-bottom: 1px solid transparent;
 }
-.top.solid { background: rgba(5, 5, 5, .72); backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%); border-color: var(--line); }
+.top.solid { background: rgba(5, 5, 5, .9); border-color: var(--line); }
 .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: calc(14px + env(safe-area-inset-top, 0px)); padding-bottom: 14px; }
 .brand { display: flex; align-items: center; gap: 12px; font-weight: 600; font-size: 17px; letter-spacing: -.02em; line-height: 1.1; }
 .brand small { font: 400 10px/1.2 var(--mono); letter-spacing: .12em; color: var(--muted); text-transform: uppercase; display: block; margin-top: 2px; }
@@ -181,7 +176,7 @@ p { margin: 0; }
   position: relative; z-index: 2; width: 100%;
   display: flex; justify-content: space-between; align-items: center; gap: 4vw;
   font-size: clamp(56px, 10.5vw, 176px); letter-spacing: -.055em; line-height: .9;
-  filter: drop-shadow(0 6px 30px rgba(0, 0, 0, .45));
+  text-shadow: 0 6px 30px rgba(0, 0, 0, .45);
 }
 .hero h1 .l, .hero h1 .r { flex: 1; }
 .hero h1 .r { text-align: right; }
@@ -380,7 +375,7 @@ p { margin: 0; }
 .btn-big.primary:hover { background: var(--text); border-color: var(--text); }
 .btn-big .arr { transition: transform .25s; }
 .btn-big:hover .arr { transform: translate(3px, -3px); }
-.checks { grid-column: 9 / span 4; display: grid; align-content: start; background: rgba(8, 7, 6, .74); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.checks { grid-column: 9 / span 4; display: grid; align-content: start; background: rgba(8, 7, 6, .92); }
 .checks .head { padding: 18px 22px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .checks ul { list-style: none; margin: 0; padding: 0; }
 .checks li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--line); font-size: 14.5px; color: var(--soft); line-height: 1.5; }
@@ -409,8 +404,8 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
 .foot-grid a:hover { color: var(--gold); }
 
 /* ---------------- Motion ---------------- */
-.js [data-reveal] { opacity: 0; transform: translateY(36px); filter: blur(6px); transition: opacity 1s var(--ease), transform 1.1s var(--ease), filter 1s var(--ease); transition-delay: var(--d, 0s); }
-.js [data-reveal].in { opacity: 1; transform: none; filter: none; }
+.js [data-reveal] { opacity: 0; transform: translateY(36px); transition: opacity 1s var(--ease), transform 1.1s var(--ease); transition-delay: var(--d, 0s); }
+.js [data-reveal].in { opacity: 1; transform: none; }
 /* The clip goes on the child: IntersectionObserver ignores fully clipped targets. */
 .js [data-reveal="clip"] { opacity: 1; filter: none; transform: none; }
 .js [data-reveal="clip"] > .photo { clip-path: inset(100% 0 0 0); transition: clip-path 1.4s var(--ease); transition-delay: var(--d, 0s); }
@@ -575,7 +570,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
         </div>
         <div class="stage">
           <div class="disk still" id="disk">
-            <video id="vid" muted playsinline loop autoplay preload="auto" aria-label="Replay of recent solar activity, NASA SDO"></video>
+            <video id="vid" muted playsinline loop preload="auto" aria-label="Replay of recent solar activity, NASA SDO"></video>
             <img id="still" alt="Latest image of the Sun from NASA SDO">
           </div>
         </div>
@@ -946,8 +941,14 @@ const CHANNELS = [
 let chan = CHANNELS[0];
 let rate = 1, stillMode = false; // open on the NASA replay; "Live 4K" shows the latest still image
 let freshVideo = false; // set when a new replay is loading
-let viewerNear = false; // the 4K image is heavy, so it loads when the viewer comes near the screen
 const vid = $("vid"), still = $("still"), disk = $("disk");
+// The replay only plays while the viewer is on screen: decoding it off screen
+// slows the whole page. wantPlay is what the visitor asked for.
+let onScreen = false, wantPlay = true;
+function syncVideo() {
+  if (stillMode) return;
+  if (onScreen && wantPlay) vid.play().catch(() => {}); else vid.pause();
+}
 
 function renderChans() {
   $("chans").innerHTML = CHANNELS.map((c) =>
@@ -970,12 +971,12 @@ function setChan(id) {
 function loadMedia() {
   const want = chan.id;
   still.src = SDO + "latest_1024_" + want + ".jpg?t=" + stamp();
-  if (viewerNear) loadHiRes();
+  if (stillMode) loadHiRes();
   if (!stillMode) {
     vid.src = SDO + "mpeg/latest_1024_" + want + ".mp4?t=" + Math.floor(Date.now() / 3600e3);
     freshVideo = true;
     vid.playbackRate = rate;
-    vid.play().catch(() => {});
+    syncVideo();
   }
 }
 function loadHiRes() {
@@ -984,21 +985,21 @@ function loadHiRes() {
   hi.onload = () => { if (chan.id === want) still.src = hi.src; };
   hi.src = SDO + "latest_4096_" + want + ".jpg?t=" + stamp();
 }
+// The 4K image is heavy: it loads only for "Live 4K".
 if ("IntersectionObserver" in window) {
-  const vo = new IntersectionObserver(([e]) => { if (e.isIntersecting) { viewerNear = true; loadHiRes(); vo.disconnect(); } }, { rootMargin: "500px 0px" });
-  vo.observe(disk);
-} else viewerNear = true;
+  new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; syncVideo(); }, { rootMargin: "200px 0px" }).observe(disk);
+} else onScreen = true;
 // If the movie can't load, show the still image instead.
 vid.addEventListener("error", () => disk.classList.add("still"));
 // A new replay starts on its last tenth, the most recent hours, then loops,
 // unless the timeline asked for another moment while it was loading.
-let pendingFrac = null, pendingPause = false;
+let pendingFrac = null;
 vid.addEventListener("loadeddata", () => {
   vid.playbackRate = rate;
   if (freshVideo && vid.duration) {
     vid.currentTime = vid.duration * (pendingFrac ?? 0.9);
-    if (pendingPause) vid.pause();
-    pendingFrac = null; pendingPause = false; freshVideo = false;
+    syncVideo();
+    pendingFrac = null; freshVideo = false;
   }
   if (!stillMode) disk.classList.remove("still");
 });
@@ -1016,17 +1017,18 @@ function syncPlay() {
 }
 $("play").addEventListener("click", () => {
   if (stillMode) { toggleStill(false); return; }
-  vid.paused ? vid.play().catch(() => {}) : vid.pause();
+  wantPlay = vid.paused;
+  syncVideo();
 });
 vid.addEventListener("play", syncPlay);
 vid.addEventListener("pause", syncPlay);
-const step = (d) => { if (!vid.duration) return; vid.pause(); vid.currentTime = Math.min(Math.max(0, vid.currentTime + d), vid.duration); };
+const step = (d) => { if (!vid.duration) return; wantPlay = false; vid.pause(); vid.currentTime = Math.min(Math.max(0, vid.currentTime + d), vid.duration); };
 $("back").addEventListener("click", () => step(-0.5));
 $("fwd").addEventListener("click", () => step(0.5));
 
 function toggleStill(on) {
   stillMode = on;
-  if (!viewerNear) { viewerNear = true; loadHiRes(); }
+  if (on) loadHiRes();
   $("live-btn").setAttribute("aria-pressed", String(on));
   disk.classList.toggle("still", on);
   if (on) { vid.pause(); setFrameTime(1); } else { loadMedia(); setFrameTime(0); }
@@ -1042,7 +1044,8 @@ function setFrameTime(frac) {
 }
 vid.addEventListener("timeupdate", () => { if (vid.duration && !stillMode) setFrameTime(vid.currentTime / vid.duration); });
 function seekFrac(frac, { pause = false } = {}) {
-  if (stillMode) { toggleStill(false); pendingFrac = frac; pendingPause = pause; }
+  if (pause) wantPlay = false;
+  if (stillMode) { toggleStill(false); pendingFrac = frac; }
   else {
     if (vid.duration) vid.currentTime = frac * vid.duration;
     if (pause) vid.pause();
@@ -1176,7 +1179,7 @@ setFrameTime(0);
 syncPlay();
 refresh();
 setInterval(refresh, 60e3);
-setInterval(() => { if (stillMode && viewerNear) still.src = SDO + "latest_4096_" + chan.id + ".jpg?t=" + stamp(); }, 3 * 60e3);
+setInterval(() => { if (stillMode) still.src = SDO + "latest_4096_" + chan.id + ".jpg?t=" + stamp(); }, 3 * 60e3);
 </script>
 </body>
 </html>
