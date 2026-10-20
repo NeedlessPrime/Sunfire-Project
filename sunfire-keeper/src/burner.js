@@ -81,7 +81,7 @@ export class Burner {
       dexes: this.cfg.jupiterDexes,
     });
     if (swap.priceImpactPct > this.cfg.maxPriceImpactPct) {
-      return this.log(`${event.label}: price impact ${swap.priceImpactPct} % above ${this.cfg.maxPriceImpactPct} %, retrying later`);
+      return this.log(`${event.label}: price impact ${swap.priceImpactPct.toFixed(2)} % above ${this.cfg.maxPriceImpactPct} %, retrying later`);
     }
     const memo = `SunFire buyback key=${event.key} event="${event.noaa}" share=${bps / 100}% sol=${sol(amount)}`;
     const label = `${event.label}: buy ${sol(amount)} SOL of $SFIRE (${bps / 100} %), at least ${swap.minOut}`;

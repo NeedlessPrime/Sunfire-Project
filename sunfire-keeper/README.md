@@ -44,7 +44,7 @@ Fee setup, either:
 | `MAX_EVENT_AGE_HOURS` | `6` | Older events are ignored |
 | `FEE_CRANK_MINUTES` | `30` | `0` turns the fee payout off |
 | `CRANK_MIN_SOL` | `0.01` | |
-| `MAX_PRICE_IMPACT_PCT` | `5` | A buyback with a higher price impact waits for a later tick |
+| `MAX_PRICE_IMPACT_PCT` | `5` | A buyback with a higher price impact waits for a later tick. The bot measures it as how much worse its rate is than a 0.001 SOL buy, since Jupiter reports none on the bonding curve |
 | `FEE_SHARE_WALLET` | | Optional: team wallet that receives `FEE_SHARE_PERCENT` of every creator fee payout |
 | `FEE_SHARE_PERCENT` | `50` | |
 | `FEE_SHARE_LOOKBACK_HOURS` | `72` | How far back the bot looks for payouts to share, for example after downtime |
