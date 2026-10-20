@@ -36,7 +36,7 @@ flowchart LR
     jup --> burn["Burn every<br/>token bought"]
 ```
 
-1. **Fees.** Pump.fun's creator fee sharing sends 100 % of the creator fees to the burn wallet. The bot collects them on-chain (`distribute_creator_fees`, plus `transfer_creator_fees_to_pump` after graduation). It forwards 50 % of each payout to the team wallet in a public transaction whose memo names the payout, and the other 50 % stays in the burn wallet to fund burns.
+1. **Fees.** Pump.fun's creator fee sharing sends 100 % of the creator fees to the burn wallet. The bot collects them on-chain (`sweep_creator_fee` and `distribute_creator_fees`, plus `transfer_creator_fees_to_pump` after graduation). It forwards 50 % of each payout to the team wallet in a public transaction whose memo names the payout, and the other 50 % stays in the burn wallet to fund burns.
 2. **Trigger.** Every minute the bot reads NOAA's official GOES flare list and the planetary Kp index. Each M or X flare and each G4+ storm becomes an event, identified by its NOAA start time.
 3. **Burn.** For each new event, the bot spends a random share of the burn wallet within the event's range. It buys $SFIRE through Jupiter and burns every token it bought with `BurnChecked`, which permanently lowers the supply.
 

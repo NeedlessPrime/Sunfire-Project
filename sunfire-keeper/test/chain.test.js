@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Keypair, SystemProgram } from "@solana/web3.js";
+import { readFileSync } from "node:fs";
+import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { Chain } from "../src/chain.js";
 
 function stubbed(dryRun) {
@@ -54,10 +55,43 @@ test("memos only count when the bot paid for the transaction, across the whole w
     { signature: "old", blockTime: 100, memo: "[40] SunFire buyback key=M-old", err: null },
   ];
   chain.conn.getSignaturesForAddress = async (_pk, { before }) => (before ? page2 : page1);
-  chain.conn.getTransaction = async (sig) => ({ transaction: { message: { staticAccountKeys: [sig === "b" ? spoofer : signer.publicKey] } } });
+  chain.conn._rpcRequest = rawTransactions((sig) => ({ transaction: { message: { accountKeys: [(sig === "b" ? spoofer : signer.publicKey).toBase58()] } } }));
   const memos = await chain.signedMemosSince(signer.publicKey, 500);
   assert.deepEqual(memos, ["[40] SunFire buyback key=M-1", "[40] SunFire burn key=M-0"]);
 });
+
+test("a memo whose transaction is not indexed yet stops the tick instead of being skipped", async () => {
+  const { chain, signer } = stubbed(false);
+  chain.conn.getSignaturesForAddress = async () => [{ signature: "a", blockTime: 1000, memo: "[60] SunFire fee share for=x", err: null }];
+  let indexed = false;
+  chain.conn._rpcRequest = rawTransactions(() => (indexed ? { transaction: { message: { accountKeys: [signer.publicKey.toBase58()] } } } : null));
+  await assert.rejects(chain.signedMemosSince(signer.publicKey, 500), /not indexed yet/);
+  indexed = true;
+  assert.deepEqual(await chain.signedMemosSince(signer.publicKey, 500), ["[60] SunFire fee share for=x"]);
+});
+
+test("payouts in real mainnet distribute_creator_fees transactions, including a version 1 one", async () => {
+  // Trimmed from mainnet, October 2026. Expected lamports: the vault's System transfers to the shareholder.
+  // A version 1 transaction (token-quoted coin, nothing to pay out), a v0 one cranked by someone
+  // else, and a legacy one cranked by the shareholder itself, which paid the fee.
+  const real = JSON.parse(readFileSync(new URL("./fixtures/distributes.json", import.meta.url), "utf8"));
+  assert.deepEqual(real.map((r) => r.tx.version), [1, 0, "legacy"]);
+  const { chain } = stubbed(false);
+  chain.conn._rpcRequest = rawTransactions((sig) => real.find((r) => r.signature === sig).tx);
+  for (const r of real) {
+    assert.equal(await chain.payoutIn(r.signature, new PublicKey(r.shareholder), new PublicKey(r.vault)), BigInt(r.lamports), r.signature);
+  }
+});
+
+/** A stub of the RPC's getTransaction, as raw JSON. */
+function rawTransactions(bySignature, fetched = []) {
+  return async (method, [signature, opts]) => {
+    assert.equal(method, "getTransaction");
+    assert.equal(opts.maxSupportedTransactionVersion, 1, "version 1 transactions must be readable");
+    fetched.push(signature);
+    return { jsonrpc: "2.0", id: 1, result: bySignature(signature) ?? null };
+  };
+}
 
 test("fee payouts: vault transactions that left the bot richer, fee added back when it paid, oldest first", async () => {
   const { chain, signer } = stubbed(false);
@@ -85,12 +119,13 @@ test("fee payouts: vault transactions that left the bot richer, fee added back w
     { signature: "old", blockTime: 100, err: null },
   ];
   const fetched = [];
-  chain.conn.getTransaction = async (sig) => {
-    fetched.push(sig);
+  const b58 = (keys) => keys.map((k) => k.toBase58());
+  chain.conn._rpcRequest = rawTransactions((sig) => {
     const t = txs[sig];
     if (!t) return null;
-    return { transaction: { message: { staticAccountKeys: t.keys } }, meta: { fee: t.fee, preBalances: t.pre, postBalances: t.post, loadedAddresses: t.loaded } };
-  };
+    const loaded = t.loaded && { writable: b58(t.loaded.writable), readonly: b58(t.loaded.readonly) };
+    return { transaction: { message: { accountKeys: b58(t.keys) } }, meta: { fee: t.fee, preBalances: t.pre, postBalances: t.post, loadedAddresses: loaded } };
+  }, fetched);
   const payouts = await chain.payoutsSince(signer.publicKey, vault, 500);
   assert.deepEqual(payouts, [{ signature: "other", lamports: 50_000n }, { signature: "own", lamports: 100_000_000n }]);
   assert.ok(!fetched.includes("failed") && !fetched.includes("old"));

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ComputeBudgetProgram, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { ata, ATA_PROGRAM, JUPITER_V6, TOKEN_PROGRAM, WSOL_MINT } from "./program.js";
-import { decodeSharingConfig, distributeIx, feeAccounts, transferAmmFeesIx } from "./pumpfees.js";
+import { decodeSharingConfig, distributeIx, feeAccounts, sweepCreatorFeeIx, transferAmmFeesIx, waitingCreatorFee } from "./pumpfees.js";
 import { randomBps } from "./solar.js";
 
 export const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -162,9 +162,10 @@ export class Burner {
 
     const ixs = [];
     if ((await this.chain.tokenBalance(a.ammVaultAta)) >= this.cfg.crankMinLamports) ixs.push(transferAmmFeesIx(mint));
-    const curveFees = (await this.chain.lamports(a.creatorVault)) - RENT_FLOOR;
+    const curveFees = (await this.chain.lamports(a.creatorVault)) - RENT_FLOOR + waitingCreatorFee(await this.chain.accountData(a.bondingCurve));
     if (ixs.length === 0 && curveFees < this.cfg.crankMinLamports) return;
-    ixs.push(distributeIx(mint, shareholders));
+    // Distribute fails while a creator fee still waits on the curve, so it is always swept first.
+    ixs.push(sweepCreatorFeeIx(mint, this.signer), distributeIx(mint, shareholders));
     return this.chain.send(`distribute creator fees (${shareholders.map((s) => `${s.shareBps / 100} %`).join(" / ")})`, ixs);
   }
 
@@ -200,13 +201,11 @@ export class Burner {
       }
       const balance = await this.chain.lamports(this.signer);
       if (balance < share + RENT_FLOOR + TX_FEE_MARGIN) {
-        const text = `Fee share of ${sol(share)} SOL owed for payout ${signature}, but the bot holds ${sol(balance)} SOL. Buybacks are paused until it is paid.`;
-        this.alerted ??= new Set();
-        if (!this.alerted.has(signature)) {
-          this.alerted.add(signature);
-          await this.alert(text);
-        }
-        throw new Error(text);
+        await this.pauseFor(`balance:${signature}`, `Fee share of ${sol(share)} SOL owed for payout ${signature}, but the bot holds ${sol(balance)} SOL. Buybacks are paused until it is paid.`);
+      }
+      // Solana refuses to create an account with less than the rent minimum.
+      if (share < RENT_FLOOR && (await this.chain.lamports(to)) === 0n) {
+        await this.pauseFor(`empty:${signature}`, `Fee share of ${sol(share)} SOL owed for payout ${signature} is below Solana's rent minimum and ${to.toBase58()} is empty: send that wallet 0.001 SOL. Buybacks are paused until it is paid.`);
       }
       const memo = `SunFire fee share for=${signature} sol=${sol(share)}`;
       await this.chain.send(`send ${sol(share)} SOL fee share (${pct} % of ${sol(lamports)}) to ${to.toBase58()}`, [
@@ -215,6 +214,16 @@ export class Burner {
       ]);
       this.shared.add(signature);
     }
+  }
+
+  /** Alerts once per payout and problem, then stops the tick so no buyback spends what is owed. */
+  async pauseFor(key, text) {
+    this.alerted ??= new Set();
+    if (!this.alerted.has(key)) {
+      this.alerted.add(key);
+      await this.alert(text);
+    }
+    throw new Error(text);
   }
 
   warnOnce(text) {

@@ -2,7 +2,10 @@
 // creator fees collect in a vault owned by the token's sharing config, and
 // anyone can call distribute_creator_fees to pay every shareholder its share.
 // After graduation, PumpSwap keeps the creator fees as wSOL in its own vault;
-// transfer_creator_fees_to_pump moves them back first. Both are permissionless.
+// transfer_creator_fees_to_pump moves them back first. Since October 2026,
+// pump.fun's newer trades (buy_v3 / sell_v3) leave the creator fee on the
+// bonding curve instead, and distribute refuses to run until
+// sweep_creator_fee has moved it to the vault. All are permissionless.
 
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { ata, ATA_PROGRAM, TOKEN_PROGRAM, WSOL_MINT } from "./program.js";
@@ -14,6 +17,7 @@ export const PUMP_FEES = new PublicKey("pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6Vo
 // Discriminators from pump.json and pump_amm.json in pump-fun/pump-public-docs.
 const DISTRIBUTE_CREATOR_FEES = Buffer.from([165, 114, 103, 0, 121, 206, 247, 81]);
 const TRANSFER_CREATOR_FEES_TO_PUMP = Buffer.from([139, 52, 134, 85, 228, 229, 108, 241]);
+const SWEEP_CREATOR_FEE = Buffer.from([32, 246, 191, 52, 8, 201, 73, 186]);
 
 const pda = (seeds, program) => PublicKey.findProgramAddressSync(seeds, program)[0];
 const ro = (pubkey) => ({ pubkey, isSigner: false, isWritable: false });
@@ -46,6 +50,30 @@ export function decodeSharingConfig(data) {
     shareholders.push({ address: new PublicKey(buf.subarray(o, o + 32)), shareBps: buf.readUInt16LE(o + 32) });
   }
   return { mint, admin, shareholders };
+}
+
+/** BondingCurve.creator_fee: the creator fee waiting on the curve, 0 on accounts older than the field. */
+export function waitingCreatorFee(curveData) {
+  return curveData?.length >= 133 ? Buffer.from(curveData).readBigUInt64LE(125) : 0n;
+}
+
+/**
+ * Moves the creator fee waiting on the bonding curve to the creator vault.
+ * Does nothing when none waits; the payer only covers rent top-ups.
+ */
+export function sweepCreatorFeeIx(mint, payer) {
+  const a = feeAccounts(mint);
+  return new TransactionInstruction({
+    programId: PUMP,
+    data: SWEEP_CREATOR_FEE,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true }, ro(pda([Buffer.from("global")], PUMP)), ro(mint),
+      ro(WSOL_MINT), ro(TOKEN_PROGRAM), ro(ATA_PROGRAM), ro(SystemProgram.programId),
+      // The two wSOL accounts are only used by token-paired coins, but must be passed.
+      rw(a.bondingCurve), rw(ata(a.bondingCurve, WSOL_MINT, TOKEN_PROGRAM)), rw(a.creatorVault), rw(ata(a.creatorVault, WSOL_MINT, TOKEN_PROGRAM)),
+      ro(pda([Buffer.from("__event_authority")], PUMP)), ro(PUMP),
+    ],
+  });
 }
 
 export function distributeIx(mint, shareholders) {

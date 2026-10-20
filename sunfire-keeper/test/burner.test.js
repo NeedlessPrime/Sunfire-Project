@@ -123,7 +123,21 @@ test("fee crank distributes once the creator vault holds enough, and moves PumpS
   chain.tokens.set(a.ammVaultAta.toBase58(), SOL / 10n);
   await b.tick();
   const programs = chain.sent[0].ixs.map((ix) => ix.programId.toBase58());
-  assert.deepEqual(programs, [PUMP_AMM.toBase58(), PUMP.toBase58()]);
+  assert.deepEqual(programs, [PUMP_AMM.toBase58(), PUMP.toBase58(), PUMP.toBase58()]);
+  assert.deepEqual(chain.sent[0].ixs.slice(1).map((ix) => ix.data[0]), [32, 165], "sweep, then distribute");
+});
+
+test("creator fees waiting on the bonding curve count, and are swept before the distribute", async () => {
+  const { b, chain, keeper } = make({ events: [], over: { feeCrankMs: 60_000 } });
+  shareholders(chain, [[keeper.publicKey, 10_000]]);
+  const curve = Buffer.alloc(166);
+  curve.writeBigUInt64LE(SOL / 10n, 125);
+  chain.data.set(feeAccounts(MINT).bondingCurve.toBase58(), curve);
+  await b.tick();
+  const [sweep, distribute] = chain.sent[0].ixs;
+  assert.deepEqual([...sweep.data], [32, 246, 191, 52, 8, 201, 73, 186]);
+  assert.ok(sweep.keys[0].pubkey.equals(keeper.publicKey) && sweep.keys[0].isSigner, "the bot pays any rent top-up");
+  assert.deepEqual([...distribute.data], [165, 114, 103, 0, 121, 206, 247, 81]);
 });
 
 /** Writes the token's pump.fun SharingConfig with these [address, bps] holders. */
@@ -195,6 +209,20 @@ test("a share the bot cannot pay pauses buybacks and alerts once", async () => {
   assert.equal(swaps.length, 0);
   assert.equal(chain.sent.length, 0);
   assert.equal(alerts.length, 1);
+});
+
+test("a share below the rent minimum for an empty FEE_SHARE_WALLET pauses buybacks and alerts once", async () => {
+  const { b, chain, swaps } = make({ over: share() });
+  const alerts = [];
+  b.alert = async (t) => alerts.push(t);
+  chain.payouts = [{ signature: PAYOUT, lamports: 1_000_000n }];
+  await assert.rejects(() => b.tick(), /below Solana's rent minimum.*is empty/);
+  await assert.rejects(() => b.tick(), /Buybacks are paused/);
+  assert.deepEqual([swaps.length, chain.sent.length, alerts.length], [0, 0, 1]);
+
+  chain.lamportsOf.set(TEAM.toBase58(), 1_000_000n);
+  await b.tick();
+  assert.equal(chain.sent[0].ixs[0].data.readBigUInt64LE(4), 500_000n, "paid once the wallet exists");
 });
 
 test("warns when the fee share is on but pump.fun still splits the fees", async () => {

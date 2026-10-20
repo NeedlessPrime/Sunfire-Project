@@ -28,6 +28,18 @@ export class Chain {
   }
 
   /**
+   * A confirmed transaction as the RPC's JSON, or null while it is not
+   * indexed. web3.js 1.x cannot read version 1 transactions, which are
+   * common on mainnet and which anyone can send to the wallet, so this asks
+   * the RPC directly.
+   */
+  async transaction(signature) {
+    const res = await this.conn._rpcRequest("getTransaction", [signature, { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 1 }]);
+    if (res.error) throw new Error(`getTransaction ${signature}: ${res.error.message}`);
+    return res.result;
+  }
+
+  /**
    * SunFire memos of the transactions `pubkey` paid for since `sinceSec`.
    * Anyone can send a transaction that touches the wallet with any memo, so
    * only transactions whose fee payer is `pubkey` count. Pages back through
@@ -49,8 +61,10 @@ export class Chain {
     const memos = [];
     for (const s of candidates) {
       if (!this.payerOf.has(s.signature)) {
-        const tx = await this.conn.getTransaction(s.signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
-        this.payerOf.set(s.signature, tx?.transaction.message.staticAccountKeys[0]?.toBase58() ?? null);
+        const tx = await this.transaction(s.signature);
+        // It may be one of the bot's own memos: skipping it could buy or share twice.
+        if (!tx) throw new Error(`Transaction ${s.signature} is not indexed yet, retrying next tick`);
+        this.payerOf.set(s.signature, tx.transaction.message.accountKeys[0]);
       }
       if (this.payerOf.get(s.signature) === pubkey.toBase58()) memos.push(s.memo);
     }
@@ -88,11 +102,11 @@ export class Chain {
   }
 
   async payoutIn(signature, pubkey, vault) {
-    const tx = await this.conn.getTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+    const tx = await this.transaction(signature);
     if (!tx?.meta) return null;
     // Balances follow the account order: static keys, then lookup-table writable, then readonly.
     const { writable = [], readonly = [] } = tx.meta.loadedAddresses ?? {};
-    const keys = [...tx.transaction.message.staticAccountKeys, ...writable, ...readonly].map(String);
+    const keys = [...tx.transaction.message.accountKeys, ...writable, ...readonly];
     const i = keys.indexOf(pubkey.toBase58());
     if (i < 0 || !keys.includes(vault.toBase58())) return 0n;
     const fee = i === 0 ? BigInt(tx.meta.fee) : 0n;
