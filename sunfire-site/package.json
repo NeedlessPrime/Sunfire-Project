@@ -2,10 +2,10 @@
   "name": "sunfire-site",
   "private": true,
   "scripts": {
-    "start": "serve . -l tcp://0.0.0.0:${PORT:-3000} --no-clipboard"
+    "start": "node server.js"
   },
   "dependencies": {
-    "serve": "14.2.4"
+    "serve-handler": "6.1.7"
   },
   "engines": {
     "node": ">=18"

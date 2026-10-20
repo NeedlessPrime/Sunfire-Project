@@ -229,6 +229,34 @@ p { margin: 0; }
 .track::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; height: 2px; background: var(--line-2); }
 .track .done { position: absolute; left: 0; top: 8px; height: 2px; background: var(--gold); }
 .track .knob { position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #fff; box-shadow: 0 0 10px #fff8; }
+/* NOAA M and X flares pinned on the replay timeline */
+.timeline { position: relative; }
+.flares { position: absolute; left: 0; right: 0; top: 0; height: 18px; pointer-events: none; }
+.flare { position: absolute; top: 1px; width: 16px; height: 16px; margin-left: -8px; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto; }
+.flare.M { --c: var(--sun); }
+.flare.X { --c: var(--flare); }
+.flare::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 3px rgba(0, 0, 0, .7), 0 0 14px var(--c); transition: transform .2s var(--ease); }
+.flare::after { content: ""; position: absolute; left: 50%; bottom: 100%; width: 1px; height: 9px; background: var(--c); opacity: .8; }
+.flare:hover::before, .flare:focus-visible::before { transform: scale(1.35); }
+.flare:focus-visible { outline: none; }
+.tip {
+  position: absolute; left: 50%; bottom: calc(100% + 16px); transform: translate(-50%, 6px);
+  display: grid; gap: 7px; width: max-content; max-width: min(250px, 80vw); padding: 13px 15px 12px; text-align: left;
+  background: rgba(14, 12, 11, .96); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: 0 18px 48px rgba(0, 0, 0, .65);
+  font: 400 11.5px/1.35 var(--mono); color: var(--soft); white-space: nowrap;
+  opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s, transform .18s var(--ease), visibility .18s;
+}
+.flare.edge-l .tip { left: -8px; transform: translateY(6px); }
+.flare.edge-r .tip { left: auto; right: -8px; transform: translateY(6px); }
+.flare:hover .tip, .flare:focus-visible .tip { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
+.flare.edge-l:hover .tip, .flare.edge-l:focus-visible .tip, .flare.edge-r:hover .tip, .flare.edge-r:focus-visible .tip { transform: none; }
+.tip-head { display: flex; align-items: center; gap: 10px; padding-bottom: 9px; margin-bottom: 2px; border-bottom: 1px solid var(--line); }
+.tip-badge { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--c); color: #000; font: 700 14px/1 var(--display); }
+.tip-head b { display: block; font: 600 14px/1.2 var(--display); color: var(--text); letter-spacing: -.01em; }
+.tip-head small { display: block; font-size: 10px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.tip-row { display: flex; justify-content: space-between; gap: 18px; }
+.tip-row b { font-weight: 500; color: var(--text); }
+.tip-hint { padding-top: 8px; margin-top: 2px; border-top: 1px solid var(--line); font-size: 10.5px; color: var(--gold); }
 .tl-labels { display: flex; justify-content: space-between; align-items: baseline; font: 400 11px/1 var(--mono); color: var(--muted); }
 .tl-labels .now { font-size: 14px; color: var(--text); }
 .tl-labels .now span { font-size: 10px; color: var(--muted); }
@@ -525,10 +553,13 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
         </div>
 
         <div class="controls">
-          <div class="track" id="track" role="slider" tabindex="0" aria-label="Timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div class="done" id="done"></div><div class="knob" id="knob"></div>
+          <div class="timeline">
+            <div class="track" id="track" role="slider" tabindex="0" aria-label="Timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div class="done" id="done"></div><div class="knob" id="knob"></div>
+            </div>
+            <div class="flares" id="flares" role="group" aria-label="M and X flares in this replay"></div>
           </div>
-          <div class="tl-labels"><span>Start</span><span class="now" id="frame-time">NASA replay<span> · time on image, UTC</span></span><span>End</span></div>
+          <div class="tl-labels"><span id="tl-start">Start</span><span class="now" id="frame-time">NASA replay<span> · time on image, UTC</span></span><span id="tl-end">End</span></div>
           <div class="btns">
             <button class="btn" data-rate="0.5" aria-pressed="false">0.5×</button>
             <button class="btn" data-rate="1" aria-pressed="true">1×</button>
@@ -860,6 +891,7 @@ function setChan(id) {
   $("i-temp").textContent = chan.temp;
   $("i-desc").textContent = chan.desc;
   loadMedia();
+  loadReplaySpan();
 }
 // The replay loads with the page so it is already playing when the viewer
 // scrolls into view.
@@ -886,10 +918,16 @@ if ("IntersectionObserver" in window) {
 } else viewerNear = true;
 // If the movie can't load, show the still image instead.
 vid.addEventListener("error", () => disk.classList.add("still"));
-// A new replay starts on its last tenth, the most recent hours, then loops.
+// A new replay starts on its last tenth, the most recent hours, then loops,
+// unless the timeline asked for another moment while it was loading.
+let pendingFrac = null, pendingPause = false;
 vid.addEventListener("loadeddata", () => {
   vid.playbackRate = rate;
-  if (freshVideo && vid.duration) { vid.currentTime = vid.duration * 0.9; freshVideo = false; }
+  if (freshVideo && vid.duration) {
+    vid.currentTime = vid.duration * (pendingFrac ?? 0.9);
+    if (pendingPause) vid.pause();
+    pendingFrac = null; pendingPause = false; freshVideo = false;
+  }
   if (!stillMode) disk.classList.remove("still");
 });
 
@@ -931,18 +969,67 @@ function setFrameTime(frac) {
   $("track").setAttribute("aria-valuenow", Math.round(frac * 100));
 }
 vid.addEventListener("timeupdate", () => { if (vid.duration && !stillMode) setFrameTime(vid.currentTime / vid.duration); });
+function seekFrac(frac, { pause = false } = {}) {
+  if (stillMode) { toggleStill(false); pendingFrac = frac; pendingPause = pause; }
+  else {
+    if (vid.duration) vid.currentTime = frac * vid.duration;
+    if (pause) vid.pause();
+  }
+  setFrameTime(frac);
+}
 function seek(e) {
   const r = $("track").getBoundingClientRect();
-  const frac = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
-  if (stillMode) toggleStill(false);
-  if (vid.duration) vid.currentTime = frac * vid.duration;
-  setFrameTime(frac);
+  seekFrac(Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1));
 }
 let dragging = false;
 $("track").addEventListener("pointerdown", (e) => { dragging = true; $("track").setPointerCapture(e.pointerId); seek(e); });
 $("track").addEventListener("pointermove", (e) => { if (dragging) seek(e); });
 $("track").addEventListener("pointerup", () => { dragging = false; });
 $("track").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1); });
+
+/* NOAA's M and X flares, pinned where they happen in NASA's replay. The site's
+   server reads the replay's time span from NASA, which the page cannot ask. */
+const TIERS = { M: "1–5 %", X: "10–25 %" };
+let replaySpan = null; // { start, end } of the current channel's replay, in ms
+let flareList = [];
+const two = (n) => String(n).padStart(2, "0");
+const hhmm = (t) => { const d = new Date(t); return two(d.getUTCHours()) + ":" + two(d.getUTCMinutes()); };
+const ddmm = (t) => { const d = new Date(t); return two(d.getUTCDate()) + "/" + two(d.getUTCMonth() + 1) + " " + hhmm(t); };
+
+async function loadReplaySpan() {
+  const want = chan.id;
+  replaySpan = null;
+  renderFlares();
+  try {
+    const r = await fetch("/api/replay?chan=" + want);
+    const j = r.ok ? await r.json() : null;
+    if (j && chan.id === want) replaySpan = { start: Date.parse(j.start), end: Date.parse(j.end) };
+  } catch (e) { /* no span, no pins */ }
+  renderFlares();
+}
+function renderFlares() {
+  const s = replaySpan;
+  $("tl-start").textContent = s ? ddmm(s.start) : "Start";
+  $("tl-end").textContent = s ? ddmm(s.end) : "End";
+  $("flares").innerHTML = !s ? "" : flareList.filter((f) => f.peak >= s.start && f.peak <= s.end).map((f) => {
+    const frac = (f.peak - s.start) / (s.end - s.start);
+    const edge = frac < 0.35 ? " edge-l" : frac > 0.65 ? " edge-r" : "";
+    const L = f.cls[0];
+    return `<button class="flare ${L}${edge}" style="left:${(frac * 100).toFixed(2)}%" data-frac="${frac}" aria-label="${f.cls} flare, peak ${ddmm(f.peak)} UTC. Show its peak">`
+      + `<span class="tip" aria-hidden="true">`
+      + `<span class="tip-head"><span class="tip-badge">${L}</span><span><b>${f.cls} flare</b><small>NOAA${f.sat ? " · GOES-" + f.sat : ""}</small></span></span>`
+      + `<span class="tip-row">Peak<b>${ddmm(f.peak)} UTC</b></span>`
+      + `<span class="tip-row">Duration<b>${f.begin ? hhmm(f.begin) : "?"} – ${f.end ? hhmm(f.end) : "ongoing"}</b></span>`
+      + `<span class="tip-row">Burn tier<b>${TIERS[L]}</b></span>`
+      + `<span class="tip-hint">Click to stop on its peak</span>`
+      + `</span></button>`;
+  }).join("");
+}
+// The replay covers hours per second, so a click stops on the flare's peak.
+$("flares").addEventListener("click", (e) => {
+  const f = e.target.closest(".flare");
+  if (f) seekFrac(Number(f.dataset.frac), { pause: true });
+});
 
 function tick() {
   const s = new Date().toISOString();
@@ -982,6 +1069,16 @@ async function loadXray() {
 async function loadFlares() {
   try {
     const data = await getJSON("/json/goes/primary/xray-flares-7-day.json");
+    // One pin per flare (NOAA can list a flare more than once while it grows), at its peak.
+    const byBegin = new Map();
+    for (const d of data) {
+      if (!/^[MX]\d+(\.\d+)?$/.test(d.max_class || "")) continue;
+      const f = { cls: d.max_class, flux: Number(d.max_xrlong) || 0, peak: Date.parse(d.max_time || d.begin_time), begin: Date.parse(d.begin_time) || 0, end: Date.parse(d.end_time) || 0, sat: Number(d.satellite) || 0 };
+      const prev = byBegin.get(d.begin_time);
+      if (Number.isFinite(f.peak) && (!prev || f.flux > prev.flux)) byBegin.set(d.begin_time, f);
+    }
+    flareList = [...byBegin.values()];
+    renderFlares();
     const big = data.map((d) => ({ ...d, t: Date.parse(d.max_time || d.begin_time) }))
       .filter((r) => /^[MX]/.test(r.max_class || "")).sort((a, b) => b.t - a.t)[0];
     if (big) {
