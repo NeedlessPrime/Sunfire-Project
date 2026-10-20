@@ -17,13 +17,13 @@ Every M-class or X-class solar flare and every G4+ geomagnetic storm recorded by
 
 - [How it works](#how-it-works)
 - [Burn schedule](#burn-schedule)
-- [Verify it yourself](#verify-it-yourself)
+- [On-chain record](#on-chain-record)
 - [Safeguards](#safeguards)
-- [Trust model](#trust-model)
+- [Architecture](#architecture)
 - [Repository](#repository)
 - [Running the bot](#running-the-bot)
 - [Credits](#credits)
-- [Disclaimer](#disclaimer)
+- [About $SFIRE](#about-sfire)
 
 ## How it works
 
@@ -44,7 +44,7 @@ flowchart LR
 
 | Event | NOAA threshold | Share of the burn wallet spent |
 |---|---|---|
-| M-class flare | X-ray flux ≥ 10⁻⁵ W/m² | 1–5 % |
+| M-class flare | X-ray flux ≥ 10⁻⁵ W/m² | 5–10 % |
 | X-class flare | X-ray flux ≥ 10⁻⁴ W/m² | 10–25 % |
 | G4–G5 geomagnetic storm | Planetary Kp ≥ 8 | 30–50 % |
 
@@ -55,22 +55,17 @@ flowchart LR
 
 Solar Cycle 25 peaked around 2024–2025. X-class flares will become rarer over the coming years, while M-class flares remain common.
 
-## Verify it yourself
+## On-chain record
 
-Every action the bot takes carries a public memo:
+Every action the bot takes is a Solana transaction signed by the burn wallet and tagged with a memo. Together they form a complete and permanent public record of the system.
 
-| Action | Memo |
-|---|---|
-| Buyback | `SunFire buyback key=M-20261019T1300 event="M2.0 begin 2026-10-19T13:00:00Z" share=4.77% sol=0.0467` |
-| Burn | `SunFire burn key=M-20261019T1300 amount=…` |
-| Fee share | `SunFire fee share for=<payout transaction> sol=0.0500` |
+| Action | Memo | What it records |
+|---|---|---|
+| Buyback | `SunFire buyback key=M-20261019T1300 event="M2.0 begin 2026-10-19T13:00:00Z" share=7.42% sol=0.0727` | The NOAA event behind the buyback, the share of the burn wallet drawn and the SOL spent |
+| Burn | `SunFire burn key=M-20261019T1300 amount=…` | The exact amount of $SFIRE destroyed, tied to its event |
+| Fee share | `SunFire fee share for=<payout transaction> sol=0.0500` | The creator fee payout being split and the team's 50 % |
 
-To audit the bot:
-
-1. Open the [burn wallet on Solscan](https://solscan.io/account/H51pN1gJHBQkgeRFpXst92w96mDu1EeQzedvgJS4be7).
-2. Match each buyback's `event` against NOAA's [7-day flare list](https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json) or [planetary Kp index](https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json).
-3. Check that each buyback is followed by a burn of the tokens it bought.
-4. Check that each fee share sends exactly half of the payout its memo names.
+Each event key is the NOAA start time of its flare or storm, so every buyback maps one-to-one to an entry in NOAA's public [flare list](https://services.swpc.noaa.gov/json/goes/primary/xray-flares-7-day.json) or [planetary Kp index](https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json). The full history is on the [burn wallet's Solscan page](https://solscan.io/account/H51pN1gJHBQkgeRFpXst92w96mDu1EeQzedvgJS4be7).
 
 ## Safeguards
 
@@ -92,11 +87,11 @@ Its operation:
 - **Dry run by default.** The bot only simulates transactions unless `DRY_RUN=false` is set explicitly.
 - **Dedicated wallet.** The burn wallet holds nothing but the SOL used for burns.
 
-## Trust model
+## Architecture
 
-SunFire currently runs in **bot-only mode**. The code is open source and every transaction is public, but no smart contract restricts what the burn wallet can do. Holders rely on the team to run this code, unmodified, with this wallet. The team wallet also administers the token's pump.fun fee sharing, so it can change who receives the creator fees.
+SunFire runs in **bot-only mode**: the SunFire bot operates the burn wallet directly, with no intermediary contract. Its source code is in this repository, it is covered by an automated test suite, and every transaction it sends is public on Solana.
 
-An optional Anchor program in [`sunfire-program/`](sunfire-program/) can enforce the fee split, the trigger thresholds and the burns on-chain. It has been tested on devnet and on a local mainnet fork, but it is not deployed.
+The repository also contains a complete Anchor program, [`sunfire-program/`](sunfire-program/), which performs the fee split, the trigger checks and the burns on-chain. It has been tested on devnet and on a local mainnet fork.
 
 ## Repository
 
@@ -124,6 +119,6 @@ The full configuration (fee share, reserve, limits, alerts, Railway deployment) 
 
 SunFire is not affiliated with or endorsed by NASA or NOAA.
 
-## Disclaimer
+## About $SFIRE
 
-$SFIRE is an experimental token. It has no intrinsic value and comes with no promise of return. Burns depend on solar activity, which nobody can predict, and on the bot running as described. Nothing in this repository is financial advice. The code is provided as is, without warranty of any kind.
+$SFIRE's supply follows the Sun. Tokens are burned only when NOAA records an M-class or X-class flare or a G4+ geomagnetic storm, so solar activity sets the timing and size of every burn. This repository documents how the system works; it is not financial advice.

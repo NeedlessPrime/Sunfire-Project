@@ -8,7 +8,7 @@ export const FLARES_LATEST_URL = `${BASE}/json/goes/primary/xray-flares-latest.j
 export const KP_URL = `${BASE}/products/noaa-planetary-k-index.json`;
 
 /** Share of the bot wallet spent per event, as an inclusive bps range. Same as math.rs. */
-export const RANGES = { M: [100, 500], X: [1_000, 2_500], Storm: [3_000, 5_000] };
+export const RANGES = { M: [500, 1_000], X: [1_000, 2_500], Storm: [3_000, 5_000] };
 export const KP_STORM = 8;
 
 const RANK = { A: 0, B: 1, C: 2, M: 3, X: 4 };

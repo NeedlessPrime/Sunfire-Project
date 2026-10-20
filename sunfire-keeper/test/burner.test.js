@@ -62,12 +62,12 @@ function make({ events = [M_FLARE], over = {} } = {}) {
   return { b, chain, swaps, keeper };
 }
 
-test("an M flare spends 1-5 % of the balance above the reserve, with a memo naming the event", async () => {
+test("an M flare spends 5-10 % of the balance above the reserve, with a memo naming the event", async () => {
   const { b, chain, swaps } = make();
   await b.tick();
   assert.equal(swaps.length, 1);
   const spendable = SOL - SOL / 50n;
-  assert.ok(swaps[0].amount >= spendable / 100n && swaps[0].amount <= spendable / 20n, String(swaps[0].amount));
+  assert.ok(swaps[0].amount >= spendable / 20n && swaps[0].amount <= spendable / 10n, String(swaps[0].amount));
   assert.match(chain.memos[0], /^SunFire buyback key=M-20261019T1300 event="M2.0 begin 2026-10-19T13:00:00Z" share=\d/);
 });
 
@@ -89,7 +89,7 @@ test("one buyback per tick, oldest event first", async () => {
 
 test("nothing is bought below the minimum, and the reserve is never spent", async () => {
   const { b, chain, swaps } = make();
-  chain.balance = SOL / 50n + 10_000_000n; // 0.01 SOL above the reserve: 1-5 % is under 0.002 SOL
+  chain.balance = SOL / 50n + 10_000_000n; // 0.01 SOL above the reserve: 5-10 % is at most 0.001 SOL, under the 0.002 SOL minimum
   await b.tick();
   assert.equal(swaps.length, 0);
 });
@@ -225,7 +225,7 @@ test("the share goes out before a buyback, which then only sees the bot's part",
   assert.match(chain.sent[0].label, /fee share/);
   assert.match(chain.sent[1].label, /buy/);
   const spendable = SOL - SOL / 4n - SOL / 50n;
-  assert.ok(swaps[0].amount <= spendable / 20n, "M flare: at most 5 % of what is left");
+  assert.ok(swaps[0].amount <= spendable / 10n, "M flare: at most 10 % of what is left");
 });
 
 test("no buyback in the tick that cranked a payout, so its share is paid first", async () => {

@@ -511,8 +511,8 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
 
   <div class="ticker" aria-hidden="true">
     <div class="ticker-track">
-      <span>M-class flare <em>1–5 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn wallet</em></span><span>Code <em>100 % public</em></span>
-      <span>M-class flare <em>1–5 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn wallet</em></span><span>Code <em>100 % public</em></span>
+      <span>M-class flare <em>5–10 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn wallet</em></span><span>Code <em>100 % public</em></span>
+      <span>M-class flare <em>5–10 % burned</em></span><span>X-class flare <em>10–25 % burned</em></span><span>G4+ storm <em>30–50 % burned</em></span><span>50 % of fees <em>to the burn wallet</em></span><span>Code <em>100 % public</em></span>
     </div>
   </div>
 
@@ -636,7 +636,7 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
           <div class="tile-top"><span class="tag m">Tier 1</span><span class="label">Live · AIA 131</span></div>
           <div>
             <h3>M-class.</h3>
-            <p class="pct"><span data-count="1">1</span>–<span data-count="5">5</span> %<small>of the burn wallet</small></p>
+            <p class="pct"><span data-count="5">5</span>–<span data-count="10">10</span> %<small>of the burn wallet</small></p>
             <div class="meta"><span>≥ 10⁻⁵ W/m²</span><span>Several a month when active</span></div>
           </div>
         </article>
@@ -989,7 +989,7 @@ $("track").addEventListener("keydown", (e) => { if (e.key === "ArrowLeft") step(
 
 /* NOAA's M and X flares, pinned where they happen in NASA's replay. The site's
    server reads the replay's time span from NASA, which the page cannot ask. */
-const TIERS = { M: "1–5 %", X: "10–25 %" };
+const TIERS = { M: "5–10 %", X: "10–25 %" };
 let replaySpan = null; // { start, end } of the current channel's replay, in ms
 let flareList = [];
 const two = (n) => String(n).padStart(2, "0");

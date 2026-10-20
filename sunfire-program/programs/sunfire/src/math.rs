@@ -22,7 +22,7 @@ impl Tier {
     /// Share of the burn vault spent on one event, as an inclusive bps range.
     pub fn range_bps(self) -> (u64, u64) {
         match self {
-            Tier::M => (100, 500),       // 1–5 %
+            Tier::M => (500, 1_000),     // 5–10 %
             Tier::X => (1_000, 2_500),   // 10–25 %
             Tier::Storm => (3_000, 5_000), // 30–50 %
         }

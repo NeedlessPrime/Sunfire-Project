@@ -21,7 +21,7 @@ Programme Anchor qui partage les fees de $SFIRE entre le wallet dev et un coffre
 
 | Événement | Seuil | Part du coffre de burn |
 |---|---|---|
-| `0` M | flux ≥ 1e-5 W/m² | 1 à 5 % |
+| `0` M | flux ≥ 1e-5 W/m² | 5 à 10 % |
 | `1` X | flux ≥ 1e-4 W/m² | 10 à 25 % |
 | `2` Storm | Kp ≥ 8 (G4–G5) | 30 à 50 % |
 
