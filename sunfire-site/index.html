@@ -462,7 +462,7 @@ img, canvas, video { display: block; }
           </div>
           <div class="disk-wrap">
             <div class="disk still" id="disk">
-              <video id="vid" muted playsinline loop preload="auto" aria-label="Replay of recent solar activity, NASA SDO"></video>
+              <video id="vid" autoplay muted playsinline loop preload="auto" aria-label="Replay of recent solar activity, NASA SDO"></video>
               <img id="still" alt="Latest image of the Sun from NASA SDO">
             </div>
             <div class="chan-info" id="info"><b id="i-name">AIA 171</b><i id="i-temp">600,000 K</i><span id="i-desc">Quiet corona. Magnetic loops and coronal structure.</span></div>
@@ -664,7 +664,8 @@ img, canvas, video { display: block; }
 const $ = (id) => document.getElementById(id);
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SWPC = "https://services.swpc.noaa.gov";
-const SDO = "https://sdo.gsfc.nasa.gov/assets/img/latest/";
+// NASA's latest SDO images and replays, through the site's own copy (see server.js).
+const SDO = "/sdo/";
 const stamp = () => Math.floor(Date.now() / 180000);
 
 /* ======================= CONTRACT ADDRESS ======================= */
@@ -1014,7 +1015,7 @@ const CHANNELS = [
   { id: "HMIB", name: "HMI Mag", c: "#9a9a9a", temp: "Magnetic", desc: "Magnetogram. Black and white show opposite magnetic polarities." },
   { id: "HMIIC", name: "HMI Visible", c: "#f0e6d0", temp: "5,800 K", desc: "Visible light. Sunspots as seen by eye." },
 ];
-let chan = CHANNELS[0], rate = 1, stillMode = false, freshVideo = false;
+let chan = CHANNELS[0], rate = 1, stillMode = false;
 const vid = $("vid"), still = $("still"), disk = $("disk");
 // The replay only plays while the viewer is on screen; wantPlay is what the visitor asked for.
 let onScreen = false, wantPlay = true, pendingFrac = null;
@@ -1033,9 +1034,9 @@ function setChan(id) {
   $("i-name").textContent = chan.name; $("i-temp").textContent = chan.temp; $("i-desc").textContent = chan.desc;
   loadMedia(); loadReplaySpan();
 }
-// The replay is fetched once the page is idle (or when the viewer comes near), so
-// it is already turning when the visitor reaches it. Phones get NASA's 512 px
-// replay (about 6 MB instead of 34), so it starts fast: the disk is small there anyway.
+// The replay starts loading as soon as the hero Sun has its own video (or when the
+// viewer comes near), so it is already turning when the visitor reaches it. Phones
+// get NASA's 512 px replay (about 6 MB instead of 34): the disk is small there anyway.
 let replayWanted = false;
 const replaySize = () => (innerWidth < 760 ? 512 : 1024);
 function wantReplay() { if (!replayWanted) { replayWanted = true; loadMedia(); } }
@@ -1043,12 +1044,30 @@ function loadMedia() {
   still.src = SDO + "latest_1024_" + chan.id + ".jpg?t=" + stamp();
   if (stillMode) loadHiRes();
   if (!stillMode && replayWanted) {
+    hideReplay();
     vid.src = SDO + "mpeg/latest_" + replaySize() + "_" + chan.id + ".mp4?t=" + Math.floor(Date.now() / 3600e3);
-    freshVideo = true;
     vid.playbackRate = rate;
     syncVideo();
   }
 }
+// NASA's latest image holds the disk until the replay is playing, a few seconds
+// ahead are loaded and the browser expects the rest in time, so a half-loaded frame
+// never shows. A replay the visitor paused shows as soon as its frame is decoded.
+let shown = false;
+function hideReplay() { shown = false; disk.classList.add("still"); }
+function showReplay() {
+  if (shown || stillMode || vid.seeking || !vid.duration) return;
+  const paused = vid.paused && !wantPlay;
+  if (paused ? vid.readyState < 2 : vid.paused || vid.readyState < 4) return;
+  const b = vid.buffered, t = vid.currentTime;
+  let i = 0;
+  while (i < b.length && b.end(i) < t) i++;
+  if (!paused && (i === b.length || b.start(i) > t + .1 || b.end(i) < Math.min(t + 3, vid.duration - .1))) return;
+  shown = true;
+  disk.classList.remove("still");
+  setFrameTime(vid.currentTime / vid.duration);
+}
+["playing", "pause", "progress", "timeupdate", "canplaythrough", "seeked"].forEach((e) => vid.addEventListener(e, showReplay));
 function loadHiRes() {
   const want = chan.id, hi = new Image();
   hi.onload = () => { if (chan.id === want) still.src = hi.src; };
@@ -1058,14 +1077,19 @@ if ("IntersectionObserver" in window) {
   new IntersectionObserver(([e]) => { onScreen = e.isIntersecting; if (onScreen) wantReplay(); syncVideo(); }, { rootMargin: "700px 0px" }).observe(disk);
   new IntersectionObserver(([e]) => { if (e.isIntersecting) wantReplay(); }, { rootMargin: "2500px 0px" }).observe(disk);
 } else { onScreen = true; replayWanted = true; }
-addEventListener("load", () => (window.requestIdleCallback || setTimeout)(wantReplay, { timeout: 4000 }));
+if (sunVideo && sunVideo.readyState < 4 && !sunVideo.error) {
+  sunVideo.addEventListener("canplaythrough", wantReplay, { once: true });
+  sunVideo.addEventListener("error", wantReplay, { once: true });
+  setTimeout(wantReplay, 6000);
+} else wantReplay();
 // Browsers pause muted videos in hidden tabs: start again when the tab is back.
 document.addEventListener("visibilitychange", () => { if (!document.hidden) syncVideo(); });
-vid.addEventListener("error", () => disk.classList.add("still"));
+vid.addEventListener("error", hideReplay);
 vid.addEventListener("loadeddata", () => {
   vid.playbackRate = rate;
-  if (freshVideo && vid.duration) { vid.currentTime = vid.duration * (pendingFrac ?? .9); syncVideo(); pendingFrac = null; freshVideo = false; }
-  if (!stillMode) disk.classList.remove("still");
+  if (pendingFrac != null && vid.duration) vid.currentTime = vid.duration * pendingFrac;
+  pendingFrac = null;
+  syncVideo();
 });
 document.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => {
   rate = Number(b.dataset.rate); vid.playbackRate = rate;
@@ -1083,8 +1107,7 @@ function toggleStill(on) {
   stillMode = on;
   if (on) loadHiRes();
   $("live-btn").setAttribute("aria-pressed", String(on));
-  disk.classList.toggle("still", on);
-  if (on) { vid.pause(); setFrameTime(1); } else { loadMedia(); setFrameTime(0); }
+  if (on) { hideReplay(); vid.pause(); setFrameTime(1); } else { loadMedia(); setFrameTime(0); }
 }
 $("live-btn").addEventListener("click", () => toggleStill(!stillMode));
 function setFrameTime(frac) {
@@ -1093,7 +1116,7 @@ function setFrameTime(frac) {
   $("knob").style.left = frac * 100 + "%";
   $("track").setAttribute("aria-valuenow", Math.round(frac * 100));
 }
-vid.addEventListener("timeupdate", () => { if (vid.duration && !stillMode) setFrameTime(vid.currentTime / vid.duration); });
+vid.addEventListener("timeupdate", () => { if (vid.duration && shown) setFrameTime(vid.currentTime / vid.duration); });
 function seekFrac(frac, { pause = false } = {}) {
   if (pause) wantPlay = false;
   if (stillMode) { toggleStill(false); pendingFrac = frac; }
@@ -1119,7 +1142,7 @@ async function loadReplaySpan() {
   const want = chan.id;
   replaySpan = null; renderFlares();
   try {
-    const r = await fetch("/api/replay?chan=" + want);
+    const r = await fetch("/api/replay?chan=" + want + "&size=" + replaySize());
     const j = r.ok ? await r.json() : null;
     if (j && chan.id === want) replaySpan = { start: Date.parse(j.start), end: Date.parse(j.end) };
   } catch (e) { /* no span, no pins */ }
