@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ComputeBudgetProgram, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { ata, ATA_PROGRAM, JUPITER_V6, TOKEN_PROGRAM, WSOL_MINT } from "./program.js";
-import { decodeSharingConfig, distributeIx, feeAccounts, sweepCreatorFeeIx, transferAmmFeesIx, waitingCreatorFee } from "./pumpfees.js";
+import { decodeSharingConfig, distributeIx, feeAccounts, sweepCreatorFeeIx, sweepPoolCreatorFeeIx, transferAmmFeesIx, waitingCreatorFee, waitingPoolCreatorFee } from "./pumpfees.js";
 import { randomBps } from "./solar.js";
 
 export const MEMO_PROGRAM = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -160,10 +160,15 @@ export class Burner {
       this.warnOnce(`FEE_SHARE_WALLET is set but the bot only gets ${mine.shareBps / 100} % of the creator fees: make it the only shareholder (100 %), or the fee share is taken twice`);
     }
 
+    const poolFees = waitingPoolCreatorFee(await this.chain.accountData(a.pool));
+    const ammFees = (await this.chain.tokenBalance(a.ammVaultAta)) + poolFees;
+    const vault = (await this.chain.lamports(a.creatorVault)) - RENT_FLOOR;
+    const curveFees = (vault > 0n ? vault : 0n) + waitingCreatorFee(await this.chain.accountData(a.bondingCurve));
+    if (ammFees + curveFees < this.cfg.crankMinLamports) return;
     const ixs = [];
-    if ((await this.chain.tokenBalance(a.ammVaultAta)) >= this.cfg.crankMinLamports) ixs.push(transferAmmFeesIx(mint));
-    const curveFees = (await this.chain.lamports(a.creatorVault)) - RENT_FLOOR + waitingCreatorFee(await this.chain.accountData(a.bondingCurve));
-    if (ixs.length === 0 && curveFees < this.cfg.crankMinLamports) return;
+    // After graduation, fees left in the pool go to the AMM vault, and from there back to pump.fun.
+    if (poolFees > 0n) ixs.push(sweepPoolCreatorFeeIx(mint, this.signer));
+    if (ammFees > 0n) ixs.push(transferAmmFeesIx(mint));
     // Distribute fails while a creator fee still waits on the curve, so it is always swept first.
     ixs.push(sweepCreatorFeeIx(mint, this.signer), distributeIx(mint, shareholders));
     return this.chain.send(`distribute creator fees (${shareholders.map((s) => `${s.shareBps / 100} %`).join(" / ")})`, ixs);

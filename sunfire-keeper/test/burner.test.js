@@ -140,6 +140,46 @@ test("creator fees waiting on the bonding curve count, and are swept before the 
   assert.deepEqual([...distribute.data], [165, 114, 103, 0, 121, 206, 247, 81]);
 });
 
+test("after graduation, creator fees waiting in the PumpSwap pool count, and are swept to the AMM vault first", async () => {
+  const { b, chain, keeper } = make({ events: [], over: { feeCrankMs: 60_000 } });
+  shareholders(chain, [[keeper.publicKey, 10_000]]);
+  const pool = Buffer.alloc(301);
+  pool.writeBigUInt64LE(SOL / 10n, 279);
+  chain.data.set(feeAccounts(MINT).pool.toBase58(), pool);
+  await b.tick();
+  const ixs = chain.sent[0].ixs;
+  assert.deepEqual(ixs.map((ix) => ix.programId.toBase58()), [PUMP_AMM, PUMP_AMM, PUMP, PUMP].map(String));
+  assert.deepEqual(ixs.map((ix) => ix.data[0]), [32, 139, 32, 165], "pool sweep, transfer to pump.fun, curve sweep, distribute");
+  assert.ok(ixs[0].keys[0].pubkey.equals(keeper.publicKey) && ixs[0].keys[0].isSigner, "the bot pays any rent top-up");
+  assert.ok(ixs[0].keys[2].pubkey.equals(feeAccounts(MINT).pool));
+});
+
+test("fees in the pool, the AMM vault and the curve add up to CRANK_MIN_SOL", async () => {
+  const { b, chain, keeper } = make({ events: [], over: { feeCrankMs: 60_000 } });
+  const a = feeAccounts(MINT);
+  shareholders(chain, [[keeper.publicKey, 10_000]]);
+  const pool = Buffer.alloc(301);
+  pool.writeBigUInt64LE(3_000_000n, 279);
+  chain.data.set(a.pool.toBase58(), pool);
+  chain.tokens.set(a.ammVaultAta.toBase58(), 3_000_000n);
+  chain.lamportsOf.set(a.creatorVault.toBase58(), 890_880n + 3_000_000n);
+  await b.tick();
+  assert.equal(chain.sent.length, 0, "0.009 SOL is below the 0.01 SOL minimum");
+
+  b.lastCrank = -Infinity;
+  chain.lamportsOf.set(a.creatorVault.toBase58(), 890_880n + 4_000_000n);
+  await b.tick();
+  assert.deepEqual(chain.sent[0].ixs.map((ix) => ix.data[0]), [32, 139, 32, 165]);
+});
+
+test("before graduation, no PumpSwap instruction is sent", async () => {
+  const { b, chain, keeper } = make({ events: [], over: { feeCrankMs: 60_000 } });
+  shareholders(chain, [[keeper.publicKey, 10_000]]);
+  chain.lamportsOf.set(feeAccounts(MINT).creatorVault.toBase58(), SOL / 10n);
+  await b.tick();
+  assert.deepEqual(chain.sent[0].ixs.map((ix) => ix.programId.toBase58()), [PUMP, PUMP].map(String));
+});
+
 /** Writes the token's pump.fun SharingConfig with these [address, bps] holders. */
 function shareholders(chain, holders) {
   const sc = Buffer.alloc(80 + holders.length * 34);

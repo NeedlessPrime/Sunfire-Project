@@ -11,7 +11,7 @@ Both start in dry-run mode: every transaction is simulated, nothing is sent.
 
 Every minute the bot:
 
-1. Pays out the token's shared creator fees once they reach `CRANK_MIN_SOL`, at most every `FEE_CRANK_MINUTES`: `sweep_creator_fee` moves the fees that pump.fun's newer trades leave on the bonding curve into the creator vault, then `distribute_creator_fees` pays the vault out (after graduation, `transfer_creator_fees_to_pump` first brings PumpSwap's fees back). Anyone can call these; the bot pays the transaction fee.
+1. Pays out the token's shared creator fees once they reach `CRANK_MIN_SOL`, at most every `FEE_CRANK_MINUTES`: `sweep_creator_fee` moves the fees that pump.fun's newer trades leave on the bonding curve into the creator vault, then `distribute_creator_fees` pays the vault out (after graduation, PumpSwap's own `sweep_creator_fee` and `transfer_creator_fees_to_pump` first bring PumpSwap's fees back, including those its newer trades leave in the pool). Anyone can call these; the bot pays the transaction fee.
 2. With `FEE_SHARE_WALLET` set, forwards `FEE_SHARE_PERCENT` of every payout that reached it to that wallet, whoever cranked the payout. A share is always paid before any buyback, and in the tick that cranked a payout the bot waits instead of buying.
 3. Reads NOAA's flare lists and planetary Kp. Every M or X flare and every G4+ storm (Kp ≥ 8) that started within `MAX_EVENT_AGE_HOURS` is an event, named after its NOAA start time.
 4. For the oldest event not yet bought, spends a random share of its balance above `RESERVE_SOL`: 1–5 % on an M flare, 10–25 % on an X flare, 30–50 % on a storm. It buys $SFIRE through Jupiter and burns everything bought.

@@ -5,7 +5,9 @@
 // transfer_creator_fees_to_pump moves them back first. Since October 2026,
 // pump.fun's newer trades (buy_v3 / sell_v3) leave the creator fee on the
 // bonding curve instead, and distribute refuses to run until
-// sweep_creator_fee has moved it to the vault. All are permissionless.
+// sweep_creator_fee has moved it to the vault. PumpSwap's newer trades
+// (buy_v2 / sell_v2) likewise leave it in the pool until PumpSwap's own
+// sweep_creator_fee moves it to the AMM vault. All are permissionless.
 
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { ata, ATA_PROGRAM, TOKEN_PROGRAM, WSOL_MINT } from "./program.js";
@@ -26,12 +28,15 @@ const rw = (pubkey) => ({ pubkey, isSigner: false, isWritable: true });
 export function feeAccounts(mint) {
   const sharingConfig = pda([Buffer.from("sharing-config"), mint.toBuffer()], PUMP_FEES);
   const ammVaultAuthority = pda([Buffer.from("creator_vault"), sharingConfig.toBuffer()], PUMP_AMM);
+  const poolAuthority = pda([Buffer.from("pool-authority"), mint.toBuffer()], PUMP);
   return {
     sharingConfig,
     bondingCurve: pda([Buffer.from("bonding-curve"), mint.toBuffer()], PUMP),
     creatorVault: pda([Buffer.from("creator-vault"), sharingConfig.toBuffer()], PUMP),
     ammVaultAuthority,
     ammVaultAta: ata(ammVaultAuthority, WSOL_MINT, TOKEN_PROGRAM),
+    // The PumpSwap pool the token graduates to (index 0, paired with wSOL).
+    pool: pda([Buffer.from("pool"), Buffer.alloc(2), poolAuthority.toBuffer(), mint.toBuffer(), WSOL_MINT.toBuffer()], PUMP_AMM),
   };
 }
 
@@ -72,6 +77,30 @@ export function sweepCreatorFeeIx(mint, payer) {
       // The two wSOL accounts are only used by token-paired coins, but must be passed.
       rw(a.bondingCurve), rw(ata(a.bondingCurve, WSOL_MINT, TOKEN_PROGRAM)), rw(a.creatorVault), rw(ata(a.creatorVault, WSOL_MINT, TOKEN_PROGRAM)),
       ro(pda([Buffer.from("__event_authority")], PUMP)), ro(PUMP),
+    ],
+  });
+}
+
+/** Pool.creator_fees: the creator fee waiting in the PumpSwap pool, 0 on accounts older than the field. */
+export function waitingPoolCreatorFee(poolData) {
+  return poolData?.length >= 287 ? Buffer.from(poolData).readBigUInt64LE(279) : 0n;
+}
+
+/**
+ * Moves the creator fee waiting in the token's PumpSwap pool to the AMM
+ * vault, where transfer_creator_fees_to_pump picks it up. Does nothing when
+ * none waits; the payer only covers rent top-ups.
+ */
+export function sweepPoolCreatorFeeIx(mint, payer) {
+  const a = feeAccounts(mint);
+  return new TransactionInstruction({
+    programId: PUMP_AMM,
+    data: SWEEP_CREATOR_FEE,
+    keys: [
+      { pubkey: payer, isSigner: true, isWritable: true }, ro(pda([Buffer.from("global_config")], PUMP_AMM)), rw(a.pool),
+      // A pump.fun pool keeps its wSOL in its own associated token account.
+      ro(WSOL_MINT), ro(TOKEN_PROGRAM), rw(ata(a.pool, WSOL_MINT, TOKEN_PROGRAM)), ro(a.ammVaultAuthority), rw(a.ammVaultAta),
+      ro(SystemProgram.programId), ro(ATA_PROGRAM), ro(pda([Buffer.from("__event_authority")], PUMP_AMM)), ro(PUMP_AMM),
     ],
   });
 }
