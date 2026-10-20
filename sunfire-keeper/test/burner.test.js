@@ -334,3 +334,57 @@ test("waits instead of buying into a thin pool", async () => {
   await b.tick();
   assert.ok(chain.sent.some((s) => s.label.includes("buy")), "bought once the price impact is acceptable");
 });
+
+// ---- alerts for burns that do not happen ----
+
+function withAlerts(opts) {
+  const m = make(opts);
+  m.alerts = [];
+  m.b.alert = async (t) => m.alerts.push(t);
+  return m;
+}
+const thinPool = (b) => {
+  const real = b.buildSwap;
+  b.buildSwap = async (a) => ({ ...(await real(a)), priceImpactPct: 12 });
+};
+
+test("a burn postponed for price impact alerts once", async () => {
+  const { b, alerts } = withAlerts();
+  thinPool(b);
+  await b.tick();
+  await b.tick();
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /M2\.0 flare: burn postponed, price impact 12\.00 % above 5 %/);
+});
+
+test("an event that ages out without a burn alerts once, with the reason", async () => {
+  const events = [M_FLARE];
+  const { b, alerts } = withAlerts({ events });
+  thinPool(b);
+  await b.tick();
+  events.length = 0; // NOAA's window moved past the flare
+  await b.tick();
+  await b.tick();
+  assert.equal(alerts.length, 2);
+  assert.match(alerts[1], /^⚠️ M2\.0 flare: no burn, the event is now older than 6 h and the price impact stayed above 5 %$/);
+});
+
+test("an event hidden by a NOAA hiccup while still in the window raises no alert", async () => {
+  const fresh = { ...M_FLARE, observedAt: Math.floor(Date.now() / 1000) };
+  const events = [fresh];
+  const { b, alerts } = withAlerts({ events });
+  thinPool(b);
+  await b.tick();
+  events.length = 0;
+  await b.tick();
+  assert.equal(alerts.length, 1, "only the postponed alert");
+});
+
+test("a bought event never raises a missed-burn alert", async () => {
+  const events = [M_FLARE];
+  const { b, alerts } = withAlerts({ events });
+  await b.tick();
+  events.length = 0;
+  await b.tick();
+  assert.ok(alerts.length > 0 && alerts.every((a) => a.startsWith("🔥")), alerts.join("\n"));
+});

@@ -32,6 +32,9 @@ export class Burner {
     Object.assign(this, { cfg, chain, readEvents, buildSwap, alert, log, now });
     this.signer = cfg.keeper.publicKey;
     this.handled = new Set();
+    // Events in the window not bought yet, and those postponed for price impact.
+    this.pending = new Map();
+    this.postponed = new Set();
     this.shared = new Set();
     this.lastCrank = -Infinity;
   }
@@ -44,10 +47,31 @@ export class Burner {
     // tick so its share goes out before a buyback could spend it.
     if (cranked && this.cfg.feeShareWallet) return;
     const events = await this.readEvents(Math.floor(this.now() / 1000));
+    await this.alertExpired(events);
     if (events.length === 0) return;
     const done = await this.burnedKeys();
-    const next = events.find((e) => !done.has(e.key) && !this.handled.has(e.key));
-    if (next) await this.buyback(next);
+    const open = events.filter((e) => !done.has(e.key) && !this.handled.has(e.key));
+    for (const e of open) this.pending.set(e.key, e);
+    if (open.length) await this.buyback(open[0]);
+  }
+
+  /** Alerts once for every event that aged out of the window without a burn. */
+  async alertExpired(events) {
+    const nowSec = Math.floor(this.now() / 1000);
+    const live = new Set(events.map((e) => e.key));
+    for (const [key, e] of this.pending) {
+      if (this.handled.has(key)) {
+        this.pending.delete(key);
+        continue;
+      }
+      // A NOAA hiccup can hide an event that is still in the window.
+      if (live.has(key) || nowSec - e.observedAt < this.cfg.maxEventAgeSec) continue;
+      this.pending.delete(key);
+      const why = this.postponed.has(key)
+        ? `the price impact stayed above ${this.cfg.maxPriceImpactPct} %`
+        : "the bot could not buy it in time";
+      await this.alert(`⚠️ ${e.label}: no burn, the event is now older than ${this.cfg.maxEventAgeSec / 3600} h and ${why}`);
+    }
   }
 
   /** Event keys already bought, from this wallet's own memos. */
@@ -81,7 +105,12 @@ export class Burner {
       dexes: this.cfg.jupiterDexes,
     });
     if (swap.priceImpactPct > this.cfg.maxPriceImpactPct) {
-      return this.log(`${event.label}: price impact ${swap.priceImpactPct.toFixed(2)} % above ${this.cfg.maxPriceImpactPct} %, retrying later`);
+      const impact = `price impact ${swap.priceImpactPct.toFixed(2)} % above ${this.cfg.maxPriceImpactPct} %`;
+      if (!this.postponed.has(event.key)) {
+        this.postponed.add(event.key);
+        await this.alert(`⏳ ${event.label}: burn postponed, ${impact}. Retrying every tick until the event is ${this.cfg.maxEventAgeSec / 3600} h old.`);
+      }
+      return this.log(`${event.label}: ${impact}, retrying later`);
     }
     const memo = `SunFire buyback key=${event.key} event="${event.noaa}" share=${bps / 100}% sol=${sol(amount)}`;
     const label = `${event.label}: buy ${sol(amount)} SOL of $SFIRE (${bps / 100} %), at least ${swap.minOut}`;

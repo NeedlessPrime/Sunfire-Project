@@ -81,6 +81,7 @@ Its bookkeeping:
 - **One buyback per event.** The bot reads its own memos back, so it never buys the same event twice, even after a restart.
 - **Spoof-proof memos.** A memo only counts when the bot paid for the transaction, so nobody can block a burn or a fee share with a fake memo.
 - **Fee share first.** The team's share of each payout goes out before any buyback can spend it. If the bot ever cannot pay a share, buybacks pause and an alert is raised.
+- **No silent misses.** A buyback postponed because of price impact raises an alert, and so does any event that ages out of the window without a burn.
 
 Its operation:
 
@@ -97,7 +98,7 @@ The repository also contains a complete Anchor program, [`sunfire-program/`](sun
 
 | Path | Description |
 |---|---|
-| [`sunfire-keeper/`](sunfire-keeper/) | The bot (Node.js 20). It handles fee collection and the fee share, reads NOAA data, and runs buybacks through Jupiter and burns. It supports bot-only mode and program mode, and is deployed on Railway. |
+| [`sunfire-keeper/`](sunfire-keeper/) | The bot (Node.js 20). It handles fee collection and the fee share, reads NOAA data, and runs buybacks through Jupiter and burns. It supports bot-only mode and program mode. |
 | [`sunfire-site/`](sunfire-site/) | [sunfire.tech](https://www.sunfire.tech): live NASA SDO imagery and NOAA space-weather data. |
 | [`sunfire-program/`](sunfire-program/) | The optional Anchor program (Token-2022 and pump.fun compatible). Not deployed. |
 
@@ -110,7 +111,7 @@ SFIRE_MINT=<token address> npm start   # dry run: simulates every transaction, s
 node --test test/*.test.js
 ```
 
-The full configuration (fee share, reserve, limits, alerts, Railway deployment) is in [`sunfire-keeper/README.md`](sunfire-keeper/README.md).
+The full configuration (fee share, reserve, limits, alerts, deployment) is in [`sunfire-keeper/README.md`](sunfire-keeper/README.md).
 
 ## Credits
 
@@ -121,4 +122,4 @@ SunFire is not affiliated with or endorsed by NASA or NOAA.
 
 ## About $SFIRE
 
-$SFIRE's supply follows the Sun. Tokens are burned only when NOAA records an M-class or X-class flare or a G4+ geomagnetic storm, so solar activity sets the timing and size of every burn. This repository documents how the system works; it is not financial advice.
+$SFIRE's supply follows the Sun. Tokens are burned only when NOAA records an M-class or X-class flare or a G4+ geomagnetic storm, so solar activity sets the timing and size of every burn.

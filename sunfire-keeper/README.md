@@ -18,6 +18,8 @@ Every minute the bot:
 
 Each buyback carries a public memo, for example `SunFire buyback key=M-20261019T1300 event="M2.0 begin 2026-10-19T13:00:00Z" share=7.42% sol=0.0727`, and each burn a `SunFire burn key=… amount=…` memo. The bot reads its own memos back, so an event is never bought twice, even after a restart. Anyone can follow the bot wallet on an explorer and compare each event with NOAA.
 
+No burn is missed silently. A buyback that waits because its price impact is above `MAX_PRICE_IMPACT_PCT` raises one alert. Any event that then ages past `MAX_EVENT_AGE_HOURS` without a burn raises another, with the reason.
+
 Each fee share carries a `SunFire fee share for=<payout signature> sol=…` memo. The bot finds payouts in its own history: successful transactions that touched the token's creator vault and left the bot richer, including payouts someone else cranked. A payout whose share memo is already on-chain is never paid again. If the bot cannot pay a share, it alerts once and pauses buybacks until it can, so nothing owed is ever spent on a burn. Shares below 0.0001 SOL stay with the bot, and payouts older than `FEE_SHARE_LOOKBACK_HOURS` are not looked at.
 
 What the bot checks before it signs a buyback, since it signs instructions returned by Jupiter's API:
@@ -89,6 +91,6 @@ npm test
 | `JUPITER_API_KEY` | | Optional, for `api.jup.ag` |
 | `ALERT_WEBHOOK_URL` | | Discord webhook for alerts and burns |
 
-## Deploy on Railway
+## Deploy
 
-New service from this repository, Root Directory `sunfire-keeper`, then add the variables above. Keep `DRY_RUN=true` until the token is live (bot-only mode) or the program is initialized with this keeper's address (program mode). The bot wallet needs a little SOL for fees and account rent: its first buy also pays about 0.004 SOL for its token account and pump.fun's volume accumulator.
+Run `npm start` from `sunfire-keeper` on any Node.js 20 host, with the variables above set in its environment. Keep `DRY_RUN=true` until the token is live (bot-only mode) or the program is initialized with this keeper's address (program mode). The bot wallet needs a little SOL for fees and account rent: its first buy also pays about 0.004 SOL for its token account and pump.fun's volume accumulator.
