@@ -129,7 +129,7 @@ p { margin: 0; }
 .hero-note b { color: var(--text); font-weight: 600; display: block; }
 .hero-aside { grid-column: 10 / span 3; font-size: 13px; line-height: 1.5; color: var(--muted); text-align: right; }
 .hero-center { grid-column: 1 / -1; position: relative; display: grid; place-items: center; min-height: 54vh; }
-.sun { position: absolute; left: 50%; top: 50%; width: min(62vh, 50vw); aspect-ratio: 1; transform: translate(-50%, -50%); }
+.sun { position: absolute; left: 50%; top: 50%; width: min(62vh, 50vw); aspect-ratio: 1; transform: translate(-50%, -50%); mix-blend-mode: screen; }
 .sun-core {
   position: absolute; inset: 0; border-radius: 50%;
   background: radial-gradient(circle at 42% 38%, #ffd27a, #ff8a1f 40%, #c53a00 70%, #3a0d00 100%);
@@ -142,12 +142,36 @@ p { margin: 0; }
   opacity: 0; transition: opacity 1.6s ease;
   -webkit-mask-image: radial-gradient(circle, #000 58%, transparent 68%); mask-image: radial-gradient(circle, #000 58%, transparent 68%);
 }
-.sun img { mix-blend-mode: screen; }
 .sun img.ok { opacity: 1; }
 .sun-core { transition: opacity 1.6s ease; }
 .sun:has(img.ok) .sun-core { opacity: 0; }
 .sun-glow { position: absolute; inset: -40%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 140, 40, .22), transparent 55%); animation: breathe 9s ease-in-out infinite reverse; }
 @keyframes breathe { 50% { transform: scale(1.025); } }
+/* The Sun turns slowly inside a shimmering corona, shaded like a sphere, and drifts a little with the pointer. */
+.sun-float { position: absolute; inset: 0; transform: translate3d(var(--mx, 0px), var(--my, 0px), 0); }
+.sun-disk { position: absolute; inset: 0; mix-blend-mode: screen; animation: spin 260s linear infinite; will-change: transform; }
+.sun-corona {
+  position: absolute; inset: -24%; pointer-events: none; animation: corona 8s ease-in-out infinite;
+  -webkit-mask-image: radial-gradient(circle closest-side, transparent 60%, #000 67%, rgba(0, 0, 0, .45) 80%, transparent 100%);
+  mask-image: radial-gradient(circle closest-side, transparent 60%, #000 67%, rgba(0, 0, 0, .45) 80%, transparent 100%);
+}
+.sun-corona::before, .sun-corona::after { content: ""; position: absolute; inset: 0; border-radius: 50%; will-change: transform; }
+.sun-corona::before {
+  background: repeating-conic-gradient(rgba(255, 150, 60, 0) 0deg, rgba(255, 150, 60, .26) 4deg, rgba(255, 150, 60, 0) 9deg, rgba(255, 196, 110, .14) 13deg, rgba(255, 150, 60, 0) 19deg);
+  animation: spin 190s linear infinite reverse;
+}
+.sun-corona::after {
+  background: repeating-conic-gradient(from 7deg, rgba(255, 106, 28, 0) 0deg, rgba(255, 106, 28, .2) 6deg, rgba(255, 106, 28, 0) 15deg);
+  animation: spin 320s linear infinite;
+}
+.sun-shade {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background:
+    radial-gradient(circle at 36% 32%, rgba(255, 226, 170, .16), transparent 42%),
+    radial-gradient(circle closest-side, transparent 62%, rgba(36, 6, 0, .32) 92%, transparent 100%);
+}
+@keyframes spin { to { transform: rotate(1turn); } }
+@keyframes corona { 50% { opacity: .68; } }
 .hero h1 {
   position: relative; z-index: 2; width: 100%;
   display: flex; justify-content: space-between; align-items: center; gap: 4vw;
@@ -494,8 +518,14 @@ footer { border-top: 1px solid var(--line); padding-block: 56px calc(36px + env(
       <div class="hero-center">
         <div class="sun" aria-hidden="true">
           <div class="sun-glow"></div>
-          <div class="sun-core"></div>
-          <img data-src="https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_0304.jpg" alt="">
+          <div class="sun-float">
+            <div class="sun-corona"></div>
+            <div class="sun-disk">
+              <div class="sun-core"></div>
+              <img data-src="https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_0304.jpg" alt="">
+            </div>
+            <div class="sun-shade"></div>
+          </div>
         </div>
         <h1 class="split" data-reveal-split style="--d:.2s"><span class="l">Ruled</span><span class="r">by the Sun.</span></h1>
         <p class="hero-poem" data-reveal style="--d:1.1s">Not by a team. Not by a vote. By light.</p>
@@ -832,6 +862,25 @@ if ("IntersectionObserver" in window) {
   }), { rootMargin: "-45% 0px -50% 0px" });
   ["live", "idea", "how", "burns", "code"].forEach((id) => no.observe($(id)));
 }
+
+// The hero Sun drifts a few pixels toward the pointer, easing in, for depth.
+(function sunDrift() {
+  const el = document.querySelector(".sun-float");
+  if (!el || reduce || !matchMedia("(pointer: fine)").matches) return;
+  let tx = 0, ty = 0, x = 0, y = 0, raf = 0;
+  const step = () => {
+    x += (tx - x) * 0.06; y += (ty - y) * 0.06;
+    el.style.setProperty("--mx", x.toFixed(2) + "px");
+    el.style.setProperty("--my", y.toFixed(2) + "px");
+    raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.05 ? requestAnimationFrame(step) : 0;
+  };
+  addEventListener("pointermove", (e) => {
+    if (scrollY > innerHeight) return;
+    tx = (e.clientX / innerWidth - 0.5) * 26;
+    ty = (e.clientY / innerHeight - 0.5) * 26;
+    if (!raf) raf = requestAnimationFrame(step);
+  }, { passive: true });
+})();
 
 // Twinkling starfield behind the hero; it stops drawing when scrolled away.
 (function stars() {
