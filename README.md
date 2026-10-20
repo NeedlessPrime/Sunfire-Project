@@ -105,8 +105,9 @@ The repository also contains a complete Anchor program, [`sunfire-program/`](sun
 
 - Space-weather data: NOAA Space Weather Prediction Center.
 - Solar imagery: NASA/SDO and the AIA, EVE and HMI science teams.
+- Hero Sun film: NASA/SDO/M. Kornmesser/L. Calçada ([ESO](https://www.eso.org/public/videos/sun_4k/)), CC BY 4.0.
 
-SunFire is not affiliated with or endorsed by NASA or NOAA.
+SunFire is not affiliated with or endorsed by NASA, NOAA or ESO.
 
 ## About $SFIRE
 
