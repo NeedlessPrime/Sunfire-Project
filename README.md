@@ -21,7 +21,6 @@ Every M-class or X-class solar flare and every G4+ geomagnetic storm recorded by
 - [Safeguards](#safeguards)
 - [Architecture](#architecture)
 - [Repository](#repository)
-- [Running the bot](#running-the-bot)
 - [Credits](#credits)
 - [About $SFIRE](#about-sfire)
 
@@ -101,17 +100,6 @@ The repository also contains a complete Anchor program, [`sunfire-program/`](sun
 | [`sunfire-keeper/`](sunfire-keeper/) | The bot (Node.js 20). It handles fee collection and the fee share, reads NOAA data, and runs buybacks through Jupiter and burns. It supports bot-only mode and program mode. |
 | [`sunfire-site/`](sunfire-site/) | [sunfire.tech](https://www.sunfire.tech): live NASA SDO imagery and NOAA space-weather data. |
 | [`sunfire-program/`](sunfire-program/) | The optional Anchor program (Token-2022 and pump.fun compatible). Not deployed. |
-
-## Running the bot
-
-```bash
-cd sunfire-keeper
-npm install
-SFIRE_MINT=<token address> npm start   # dry run: simulates every transaction, sends nothing
-node --test test/*.test.js
-```
-
-The full configuration (fee share, reserve, limits, alerts, deployment) is in [`sunfire-keeper/README.md`](sunfire-keeper/README.md).
 
 ## Credits
 
